@@ -5,6 +5,7 @@ import { DiagnosticAssessmentPage } from './components/DiagnosticAssessmentPage'
 import { DashboardPage } from './components/DashboardPage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { useFirebase } from './context/FirebaseContext';
+import { useToast } from './context/ToastContext';
 import { formatFirebaseUserError } from './lib/firebase';
 import { clearDemoState, loadDemoState, saveDemoState } from './lib/demoStorage';
 import { safeApiPost, toUserFriendlyError } from './lib/errors';
@@ -86,6 +87,7 @@ export default function App() {
     clearAuthError,
   } = useFirebase();
 
+  const { showToast } = useToast();
   const initialDemoRef = useRef(loadDemoState());
   const restoredDemo = initialDemoRef.current;
 
@@ -124,6 +126,7 @@ export default function App() {
   );
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
+  const diagRetryRef = useRef<(() => void) | null>(null);
 
   const [skillTree, setSkillTree] = useState<SkillTreeData | null>(() =>
     restoredDemo ? restoredDemo.skillTree : null
@@ -146,6 +149,7 @@ export default function App() {
     restoredDemo ? restoredDemo.synthesis : null
   );
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const [videoTestResults, setVideoTestResults] = useState<VideoTestResult[]>(() =>
     restoredDemo ? restoredDemo.videoTestResults : []
   );
@@ -396,6 +400,9 @@ export default function App() {
     setScreen('diagnostic');
 
     setDiagLoading(true);
+    diagRetryRef.current = () => {
+      void handleCompleteSetup(config);
+    };
     try {
       const data = await safeApiPost<{
         reply: string;
@@ -410,6 +417,7 @@ export default function App() {
         currentProfile: freshProfile,
       });
 
+      diagRetryRef.current = null;
       setProfile((prev) => ({
         ...prev,
         ...data.updatedProfile,
@@ -427,7 +435,9 @@ export default function App() {
         },
       ]);
     } catch (err) {
-      setDiagError(toUserFriendlyError(err, 'Unable to start knowledge check.'));
+      const friendly = toUserFriendlyError(err, 'Unable to start knowledge check.');
+      setDiagError(friendly);
+      showToast(friendly, 'error');
     } finally {
       setDiagLoading(false);
     }
@@ -437,10 +447,13 @@ export default function App() {
     async (overrideMessages?: DiagnosticMessage[], overrideProfile?: DiagnosticProfile) => {
       const activeProfile = overrideProfile || profile;
       const activeMessages = overrideMessages || messages;
-      if (!activeProfile.topic) return;
+      if (!activeProfile.topic || treeLoading) return;
 
       setTreeLoading(true);
       setDiagError(null);
+      diagRetryRef.current = () => {
+        void handleGenerateSkillTree(overrideMessages, overrideProfile);
+      };
       try {
         const tree = await safeApiPost<SkillTreeData>('/api/skill-tree/generate', {
           topic: activeProfile.topic,
@@ -450,6 +463,7 @@ export default function App() {
           profile: activeProfile,
           history: activeMessages.map((m) => ({ role: m.role, content: m.content })),
         });
+        diagRetryRef.current = null;
         const initialNodeId = tree.recommendedNextId || tree.nodes[0]?.id || null;
         setSkillTree(tree);
         setSelectedNodeId(initialNodeId);
@@ -467,31 +481,42 @@ export default function App() {
             });
             setActivePathId(newId);
           } catch (saveErr) {
-            setDiagError(formatFirebaseUserError(saveErr));
+            const friendlySave = formatFirebaseUserError(saveErr);
+            setDiagError(friendlySave);
+            showToast(friendlySave, 'error');
           }
         } else {
           setActivePathId(null);
         }
       } catch (err) {
-        setDiagError(toUserFriendlyError(err, 'Failed to build your learning path.'));
+        const friendly = toUserFriendlyError(err, 'Failed to build your learning path.');
+        setDiagError(friendly);
+        showToast(friendly, 'error');
       } finally {
         setTreeLoading(false);
       }
     },
-    [profile, messages, user, setActivePathId]
+    [profile, messages, treeLoading, user, setActivePathId, showToast]
   );
 
-  const handleSendDiagnosticMessage = async (userText: string) => {
+  const sendDiagnosticTurn = async (
+    userText: string,
+    priorMessages: DiagnosticMessage[],
+    priorProfile: DiagnosticProfile
+  ) => {
     const userMsg: DiagnosticMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
       content: userText,
       timestamp: nowLabel(),
     };
-    const nextHistory = [...messages, userMsg];
+    const nextHistory = [...priorMessages, userMsg];
     setMessages(nextHistory);
     setDiagLoading(true);
     setDiagError(null);
+    diagRetryRef.current = () => {
+      void sendDiagnosticTurn(userText, priorMessages, priorProfile);
+    };
 
     try {
       const data = await safeApiPost<{
@@ -500,18 +525,19 @@ export default function App() {
         assessment?: DiagnosticMessage['assessment'];
         updatedProfile: Partial<DiagnosticProfile>;
       }>('/api/diagnostic/turn', {
-        topic: profile.topic,
-        goal: profile.goal,
-        history: messages.map((m) => ({ role: m.role, content: m.content })),
+        topic: priorProfile.topic,
+        goal: priorProfile.goal,
+        history: priorMessages.map((m) => ({ role: m.role, content: m.content })),
         userMessage: userText,
-        currentProfile: profile,
+        currentProfile: priorProfile,
       });
 
+      diagRetryRef.current = null;
       const updatedProfile: DiagnosticProfile = {
-        ...profile,
+        ...priorProfile,
         ...data.updatedProfile,
-        pace: profile.pace,
-        dailyMinutes: profile.dailyMinutes,
+        pace: priorProfile.pace,
+        dailyMinutes: priorProfile.dailyMinutes,
       };
       const assistantMsg: DiagnosticMessage = {
         id: `asst_${Date.now()}`,
@@ -531,10 +557,16 @@ export default function App() {
         await handleGenerateSkillTree(completeHistory, updatedProfile);
       }
     } catch (err) {
-      setDiagError(toUserFriendlyError(err, 'Failed to process answer.'));
+      const friendly = toUserFriendlyError(err, 'Failed to process answer.');
+      setDiagError(friendly);
+      showToast(friendly, 'error');
     } finally {
       setDiagLoading(false);
     }
+  };
+
+  const handleSendDiagnosticMessage = async (userText: string) => {
+    await sendDiagnosticTurn(userText, messages, profile);
   };
 
   const handleSaveCurrentPathForUser = useCallback(
@@ -641,8 +673,10 @@ export default function App() {
     video: VideoResult,
     transcriptContext: string
   ) => {
+    if (isSummarizing) return;
     setIsSummarizing(true);
     setDiagError(null);
+    setNotesError(null);
     const activeNode = skillTree?.nodes.find((n) => n.id === selectedNodeId) || null;
     try {
       const nextSynthesis = await safeApiPost<VideoSynthesis>('/api/videos/summarize', {
@@ -660,19 +694,25 @@ export default function App() {
         try {
           await updateLearningPathNotes(user.uid, activePathId, nextSynthesis, selectedNodeId);
         } catch (saveErr) {
-          setDiagError(formatFirebaseUserError(saveErr));
+          const friendlySave = formatFirebaseUserError(saveErr);
+          setNotesError(friendlySave);
+          showToast(friendlySave, 'error');
         }
       }
     } catch (err) {
-      setDiagError(toUserFriendlyError(err, 'Could not synthesize study notes.'));
+      const friendly = toUserFriendlyError(err, 'Could not synthesize study notes.');
+      setNotesError(friendly);
+      showToast(friendly, 'error');
     } finally {
       setIsSummarizing(false);
     }
   };
 
   const handleGenerateNotesForNode = async (node: SkillNode) => {
+    if (isSummarizing) return;
     setIsSummarizing(true);
     setDiagError(null);
+    setNotesError(null);
     try {
       const nextSynthesis = await safeApiPost<VideoSynthesis>('/api/videos/summarize', {
         videoId: selectedVideo?.videoId || `node_${node.id}`,
@@ -688,11 +728,15 @@ export default function App() {
         try {
           await updateLearningPathNotes(user.uid, activePathId, nextSynthesis, node.id);
         } catch (saveErr) {
-          setDiagError(formatFirebaseUserError(saveErr));
+          const friendlySave = formatFirebaseUserError(saveErr);
+          setNotesError(friendlySave);
+          showToast(friendlySave, 'error');
         }
       }
     } catch (err) {
-      setDiagError(toUserFriendlyError(err, 'Could not generate study notes.'));
+      const friendly = toUserFriendlyError(err, 'Could not generate study notes.');
+      setNotesError(friendly);
+      showToast(friendly, 'error');
     } finally {
       setIsSummarizing(false);
     }
@@ -1010,6 +1054,7 @@ export default function App() {
         onBackToSetup={() => setScreen('setup')}
         onSendMessage={handleSendDiagnosticMessage}
         onGenerateSkillTree={() => handleGenerateSkillTree()}
+        onRetry={() => diagRetryRef.current?.()}
         onLaunchDemo={handleLaunchDemo}
       />
     );
@@ -1027,6 +1072,7 @@ export default function App() {
       bookmarkedIds={bookmarkedIds}
       synthesis={synthesis}
       isSummarizing={isSummarizing}
+      notesError={notesError}
       error={diagError}
       user={user}
       authReady={authReady}

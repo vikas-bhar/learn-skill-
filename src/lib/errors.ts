@@ -62,6 +62,9 @@ export function toUserFriendlyError(
 }
 
 function mapStatusFallback(status: number): string {
+  if (status === 400) {
+    return 'Please check your input and try again.';
+  }
   if (status === 404) {
     return 'This service route is temporarily unavailable. Please refresh the page and try again.';
   }
@@ -70,6 +73,9 @@ function mapStatusFallback(status: number): string {
   }
   if (status === 403) {
     return 'Access to this AI service request was declined. Please check configuration.';
+  }
+  if (status === 503) {
+    return 'The AI service is not configured or temporarily unavailable. Please try again shortly.';
   }
   if (status >= 500) {
     return 'The AI service encountered a temporary issue. Please try again shortly.';

@@ -31,6 +31,7 @@ import {
   VideoTestResult,
 } from '../types/learning';
 import { safeApiPost, toUserFriendlyError } from '../lib/errors';
+import { useToast } from '../context/ToastContext';
 
 interface FinalExamCertificateViewProps {
   profile: DiagnosticProfile;
@@ -250,9 +251,13 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
   onProjectsGenerated,
   onProjectEvaluated,
 }) => {
+  const { showToast } = useToast();
   const [examPayload, setExamPayload] = useState<FinalExamPayload | null>(null);
   const [examLoading, setExamLoading] = useState(false);
-  const [examError, setExamError] = useState<string | null>(null);
+  const [examError, setExamError] = useState<{
+    action: 'generate' | 'evaluate';
+    message: string;
+  } | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [notesByQ, setNotesByQ] = useState<Record<string, string>>({});
   const [hintsOpen, setHintsOpen] = useState<Record<string, boolean>>({});
@@ -261,7 +266,11 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
   const [customName, setCustomName] = useState(defaultLearnerName);
 
   const [projectsLoading, setProjectsLoading] = useState(false);
-  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [projectsError, setProjectsError] = useState<{
+    action: 'generate' | 'evaluate' | 'validation';
+    project?: CapstoneProjectItem;
+    message: string;
+  } | null>(null);
   const [projectTexts, setProjectTexts] = useState<Record<string, string>>({});
   const [projectUrls, setProjectUrls] = useState<Record<string, string>>({});
   const [submittingProjectId, setSubmittingProjectId] = useState<string | null>(null);
@@ -287,6 +296,7 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       : 0;
 
   const handleStartExam = async () => {
+    if (examLoading) return;
     setExamLoading(true);
     setExamError(null);
     setLatestEvaluation(null);
@@ -308,9 +318,12 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       });
       setExamPayload(data);
     } catch (err) {
-      setExamError(
-        toUserFriendlyError(err, 'Unable to start the final AI exam right now.')
+      const friendly = toUserFriendlyError(
+        err,
+        'Unable to start the final AI exam right now.'
       );
+      setExamError({ action: 'generate', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setExamLoading(false);
     }
@@ -321,9 +334,8 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
     examPayload.questions.length > 0 &&
     examPayload.questions.every((q) => Boolean((notesByQ[q.id] || answers[q.id] || '').trim()));
 
-  const handleSubmitExam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!examPayload || !allQuestionsAnswered) return;
+  const submitExamEvaluation = async () => {
+    if (!examPayload || !allQuestionsAnswered || evalLoading) return;
 
     setEvalLoading(true);
     setExamError(null);
@@ -352,15 +364,21 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       const recipientName = (customName.trim() || defaultLearnerName || 'Learner').trim();
       await onFinalExamEvaluated(data, recipientName);
     } catch (err) {
-      setExamError(
-        toUserFriendlyError(err, 'Could not evaluate final exam answers.')
-      );
+      const friendly = toUserFriendlyError(err, 'Could not evaluate final exam answers.');
+      setExamError({ action: 'evaluate', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setEvalLoading(false);
     }
   };
 
+  const handleSubmitExam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitExamEvaluation();
+  };
+
   const handleGenerateProjects = async () => {
+    if (projectsLoading) return;
     setProjectsLoading(true);
     setProjectsError(null);
     try {
@@ -381,22 +399,26 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       const list = (data.projects || []) as CapstoneProjectItem[];
       await onProjectsGenerated(list);
     } catch (err) {
-      setProjectsError(
-        toUserFriendlyError(err, 'Unable to generate assigned projects right now.')
+      const friendly = toUserFriendlyError(
+        err,
+        'Unable to generate assigned projects right now.'
       );
+      setProjectsError({ action: 'generate', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setProjectsLoading(false);
     }
   };
 
-  const handleSubmitProject = async (e: React.FormEvent, project: CapstoneProjectItem) => {
-    e.preventDefault();
+  const submitProjectEvaluation = async (project: CapstoneProjectItem) => {
+    if (submittingProjectId) return;
     const submissionText = (projectTexts[project.id] ?? project.submissionText ?? '').trim();
     const submissionUrl = (projectUrls[project.id] ?? project.submissionUrl ?? '').trim();
     if (submissionText.length < 20) {
-      setProjectsError(
-        'Please describe your implemented solution, key steps, and deliverables (at least 20 characters).'
-      );
+      const valMsg =
+        'Please describe your implemented solution, key steps, and deliverables (at least 20 characters).';
+      setProjectsError({ action: 'validation', message: valMsg });
+      showToast(valMsg, 'error');
       return;
     }
 
@@ -440,12 +462,20 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       const recipientName = (customName.trim() || defaultLearnerName || 'Learner').trim();
       await onProjectEvaluated(updatedProjects, data, recipientName);
     } catch (err) {
-      setProjectsError(
-        toUserFriendlyError(err, 'Project evaluation failed. Please try again.')
+      const friendly = toUserFriendlyError(
+        err,
+        'Project evaluation failed. Please try again.'
       );
+      setProjectsError({ action: 'evaluate', project, message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setSubmittingProjectId(null);
     }
+  };
+
+  const handleSubmitProject = async (e: React.FormEvent, project: CapstoneProjectItem) => {
+    e.preventDefault();
+    await submitProjectEvaluation(project);
   };
 
   return (
@@ -843,9 +873,29 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
               </div>
 
               {examError && (
-                <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{examError}</span>
+                <div
+                  role="alert"
+                  className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800 dark:text-[#FB7185]"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{examError.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={examLoading || evalLoading}
+                    onClick={() => {
+                      if (examError.action === 'evaluate') {
+                        void submitExamEvaluation();
+                      } else {
+                        void handleStartExam();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Try again</span>
+                  </button>
                 </div>
               )}
 
@@ -1047,9 +1097,31 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
               </div>
 
               {projectsError && (
-                <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{projectsError}</span>
+                <div
+                  role="alert"
+                  className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800 dark:text-[#FB7185]"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{projectsError.message}</span>
+                  </div>
+                  {projectsError.action !== 'validation' && (
+                    <button
+                      type="button"
+                      disabled={projectsLoading || Boolean(submittingProjectId)}
+                      onClick={() => {
+                        if (projectsError.action === 'evaluate' && projectsError.project) {
+                          void submitProjectEvaluation(projectsError.project);
+                        } else {
+                          void handleGenerateProjects();
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Try again</span>
+                    </button>
+                  )}
                 </div>
               )}
 

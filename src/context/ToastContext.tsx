@@ -26,9 +26,12 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (message: string, variant: ToastVariant = 'info') => {
       const id = Date.now() + Math.floor(Math.random() * 1000);
       setToasts((prev) => [...prev.slice(-2), { id, message, variant }]);
-      setTimeout(() => {
-        dismiss(id);
-      }, 3400);
+      setTimeout(
+        () => {
+          dismiss(id);
+        },
+        variant === 'error' ? 6000 : 3400
+      );
     },
     [dismiss]
   );
@@ -44,7 +47,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            role="status"
+            role={toast.variant === 'error' ? 'alert' : 'status'}
             className={`pointer-events-auto flex items-center justify-between gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-md text-xs font-medium animate-fade-up ${
               toast.variant === 'success'
                 ? 'bg-white/95 dark:bg-[#17213A]/95 border-emerald-200 dark:border-[#34D399]/40 text-slate-900 dark:text-[#F8FAFC]'

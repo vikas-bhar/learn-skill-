@@ -649,10 +649,15 @@ async function handleSkillTreeQuiz(req: ApiRequest, res: ServerResponse): Promis
   try {
     const { topic = '', node } = await readJsonBody<{
       topic: string;
-      node: { id?: string; title?: string; summary?: string; learningObjectives?: string[] };
+      node: string | { id?: string; title?: string; summary?: string; learningObjectives?: string[] };
     }>(req);
 
-    if (!node?.title) {
+    const normalizedNode =
+      typeof node === 'string'
+        ? { id: 'n1', title: node.trim(), summary: '', learningObjectives: [] as string[] }
+        : node;
+
+    if (!normalizedNode?.title || !normalizedNode.title.trim()) {
       sendJson(res, 400, { error: 'Skill node is required.' });
       return;
     }
@@ -660,9 +665,9 @@ async function handleSkillTreeQuiz(req: ApiRequest, res: ServerResponse): Promis
     const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: `Topic: "${topic}"
-Skill Node: "${node.title}" — ${node.summary || ''}
-Objectives: ${(node.learningObjectives || []).join('; ')}
+      contents: `Topic: "${topic || normalizedNode.title}"
+Skill Node: "${normalizedNode.title}" — ${normalizedNode.summary || ''}
+Objectives: ${(normalizedNode.learningObjectives || []).join('; ')}
 
 Create ONE applied conceptual check question (not trivial trivia) to verify the learner understands this skill. Provide 4 concise, plausible multiple-choice options and a 1-sentence hint. Never use *, &, ^, $, #, or @ characters.`,
       config: {
@@ -689,7 +694,7 @@ Create ONE applied conceptual check question (not trivial trivia) to verify the 
     }
 
     sendJson(res, 200, {
-      nodeId: node.id || 'n1',
+      nodeId: normalizedNode.id || 'n1',
       question: cleanDisplayText(parsed.question),
       options: cleanDisplayList(parsed.options, 4),
       hint: cleanDisplayText(parsed.hint),
@@ -703,10 +708,12 @@ async function handleSkillTreeEvaluate(req: ApiRequest, res: ServerResponse): Pr
   try {
     const { topic = '', node, question = '', userAnswer = '' } = await readJsonBody<{
       topic: string;
-      node: { title?: string; summary?: string };
+      node: string | { title?: string; summary?: string };
       question: string;
       userAnswer: string;
     }>(req);
+
+    const normalizedNode = typeof node === 'string' ? { title: node.trim(), summary: '' } : node;
 
     if (!question || !userAnswer?.trim()) {
       sendJson(res, 400, { error: 'Question and answer are required.' });
@@ -717,7 +724,7 @@ async function handleSkillTreeEvaluate(req: ApiRequest, res: ServerResponse): Pr
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
       contents: `Topic: "${topic}"
-Skill: "${node?.title || topic}" (${node?.summary || ''})
+Skill: "${normalizedNode?.title || topic}" (${normalizedNode?.summary || ''})
 Question: "${question}"
 Learner's Answer: "${userAnswer}"
 

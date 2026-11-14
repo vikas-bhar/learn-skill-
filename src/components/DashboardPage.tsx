@@ -58,6 +58,7 @@ interface DashboardPageProps {
   bookmarkedIds: Record<string, boolean>;
   synthesis: VideoSynthesis | null;
   isSummarizing: boolean;
+  notesError: string | null;
   error: string | null;
   user: User | null;
   authReady: boolean;
@@ -137,6 +138,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   bookmarkedIds,
   synthesis,
   isSummarizing,
+  notesError,
   error,
   user,
   authReady,
@@ -838,6 +840,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               selectedVideo={selectedVideo}
               bookmarkedIds={bookmarkedIds}
               isSummarizing={isSummarizing}
+              notesError={notesError}
               synthesis={synthesis}
               videoTestResults={videoTestResults}
               onVideosLoaded={onVideosLoaded}
@@ -854,6 +857,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               synthesis={synthesis}
               isDark={isDark}
               isRegenerating={isSummarizing}
+              notesError={notesError}
               onSelectNode={onSelectNode}
               onRegenerateNotes={onGenerateNotesForNode}
             />

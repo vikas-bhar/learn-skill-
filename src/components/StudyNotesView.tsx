@@ -22,6 +22,7 @@ interface StudyNotesViewProps {
   synthesis: VideoSynthesis | null;
   isDark: boolean;
   isRegenerating: boolean;
+  notesError?: string | null;
   onSelectNode: (nodeId: string) => void;
   onRegenerateNotes: (node: SkillNode) => Promise<void>;
 }
@@ -32,6 +33,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   synthesis,
   isDark,
   isRegenerating,
+  notesError,
   onSelectNode,
   onRegenerateNotes,
 }) => {
@@ -225,6 +227,29 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
 
         {/* Right Paper-like Note Content */}
         <div className="lg:col-span-8 bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 md:p-8 space-y-7">
+          {notesError && (
+            <div
+              role="alert"
+              className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800 dark:text-[#FB7185]"
+            >
+              <div className="flex items-start gap-2.5 min-w-0">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{notesError}</span>
+              </div>
+              {activeNode && (
+                <button
+                  type="button"
+                  disabled={isRegenerating}
+                  onClick={() => void onRegenerateNotes(activeNode)}
+                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                  <span>Try again</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {!synthesis ? (
             <div className="py-12 text-center max-w-md mx-auto space-y-4">
               <FileText className="w-8 h-8 text-[#6D5DFB] mx-auto" />

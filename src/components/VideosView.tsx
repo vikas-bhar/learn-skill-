@@ -21,6 +21,7 @@ import {
   VideoTestResult,
 } from '../types/learning';
 import { safeApiPost, toUserFriendlyError } from '../lib/errors';
+import { useToast } from '../context/ToastContext';
 
 interface VideosViewProps {
   topic: string;
@@ -29,6 +30,7 @@ interface VideosViewProps {
   selectedVideo: VideoResult | null;
   bookmarkedIds: Record<string, boolean>;
   isSummarizing: boolean;
+  notesError?: string | null;
   synthesis: VideoSynthesis | null;
   videoTestResults: VideoTestResult[];
   onVideosLoaded: (videos: VideoResult[]) => void;
@@ -50,6 +52,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
   selectedVideo,
   bookmarkedIds,
   isSummarizing,
+  notesError,
   synthesis,
   videoTestResults,
   onVideosLoaded,
@@ -59,18 +62,23 @@ export const VideosView: React.FC<VideosViewProps> = ({
   onVideoTestCompleted,
   onMarkNodeComplete,
 }) => {
+  const { showToast } = useToast();
   const [query, setQuery] = useState(
     activeNode?.youtubeSearchQuery || `${topic} ${activeNode?.title || ''}`.trim()
   );
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastSearchTerm, setLastSearchTerm] = useState('');
   const [failedThumbs, setFailedThumbs] = useState<Record<string, boolean>>({});
   const [notesContext, setNotesContext] = useState('');
   const lastAutoQueryRef = useRef<string>('');
 
   const [quizPayload, setQuizPayload] = useState<VideoQuizPayload | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
-  const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizError, setQuizError] = useState<{
+    action: 'quiz' | 'evaluate';
+    message: string;
+  } | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [evalLoading, setEvalLoading] = useState(false);
@@ -89,6 +97,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
       if (!searchTerm.trim()) return;
       setIsSearching(true);
       setError(null);
+      setLastSearchTerm(searchTerm.trim());
       try {
         const data = await safeApiPost<{ videos?: VideoResult[] }>('/api/videos/search', {
           query: searchTerm.trim(),
@@ -97,23 +106,26 @@ export const VideosView: React.FC<VideosViewProps> = ({
         });
         const list = (data.videos || []) as VideoResult[];
         if (list.length === 0) {
-          setError('No embeddable videos found for that query. Try a broader term or paste a YouTube URL.');
+          const emptyMsg =
+            'No embeddable videos found for that query. Try a broader term or paste a YouTube URL.';
+          setError(emptyMsg);
+          showToast(emptyMsg, 'info');
         } else {
           onVideosLoaded(list);
           onSelectVideo(list[0]);
         }
       } catch (err) {
-        setError(
-          toUserFriendlyError(
-            err,
-            'We could not load recommendations right now. Please try again shortly.'
-          )
+        const friendly = toUserFriendlyError(
+          err,
+          'We could not load recommendations right now. Please try again shortly.'
         );
+        setError(friendly);
+        showToast(friendly, 'error');
       } finally {
         setIsSearching(false);
       }
     },
-    [activeNode?.title, topic, onVideosLoaded, onSelectVideo]
+    [activeNode?.title, topic, onVideosLoaded, onSelectVideo, showToast]
   );
 
   useEffect(() => {
@@ -136,7 +148,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
   };
 
   const handleStartVideoTest = async () => {
-    if (!selectedVideo) return;
+    if (!selectedVideo || quizLoading) return;
     setQuizLoading(true);
     setQuizError(null);
     setLatestEvaluation(null);
@@ -160,7 +172,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
       });
       setQuizPayload(data);
     } catch (err) {
-      setQuizError(toUserFriendlyError(err, 'Unable to start post-video test.'));
+      const friendly = toUserFriendlyError(err, 'Unable to start post-video test.');
+      setQuizError({ action: 'quiz', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setQuizLoading(false);
     }
@@ -173,9 +187,8 @@ export const VideosView: React.FC<VideosViewProps> = ({
       Boolean((customAnswers[q.id] || selectedAnswers[q.id] || '').trim())
     );
 
-  const handleSubmitVideoTest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVideo || !quizPayload || !allTestAnswered) return;
+  const submitVideoTest = async () => {
+    if (!selectedVideo || !quizPayload || !allTestAnswered || evalLoading) return;
 
     setEvalLoading(true);
     setQuizError(null);
@@ -201,10 +214,17 @@ export const VideosView: React.FC<VideosViewProps> = ({
       setLatestEvaluation(data);
       await onVideoTestCompleted(selectedVideo, activeNode, data);
     } catch (err) {
-      setQuizError(toUserFriendlyError(err, 'Failed to score post-video test.'));
+      const friendly = toUserFriendlyError(err, 'Failed to score post-video test.');
+      setQuizError({ action: 'evaluate', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setEvalLoading(false);
     }
+  };
+
+  const handleSubmitVideoTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitVideoTest();
   };
 
   const existingResultForVideo = selectedVideo
@@ -249,9 +269,23 @@ export const VideosView: React.FC<VideosViewProps> = ({
       </div>
 
       {error && (
-        <div className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex items-start gap-3 text-xs text-amber-800 dark:text-[#FBBF24]">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
+        <div
+          role="alert"
+          className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-800 dark:text-[#FBBF24]"
+        >
+          <div className="flex items-start gap-2.5 min-w-0">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            disabled={isSearching}
+            onClick={() => void runVideoSearch(lastSearchTerm || query)}
+            className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-amber-300 dark:border-[#FBBF24]/40 text-amber-900 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Try again</span>
+          </button>
         </div>
       )}
 
@@ -460,6 +494,27 @@ export const VideosView: React.FC<VideosViewProps> = ({
                   </>
                 )}
               </button>
+
+              {notesError && (
+                <div
+                  role="alert"
+                  className="p-3.5 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 space-y-2 text-xs text-rose-800 dark:text-[#FB7185]"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{notesError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isSummarizing}
+                    onClick={() => void onGenerateNotes(selectedVideo, notesContext)}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#17213A] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Try again</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -489,9 +544,29 @@ export const VideosView: React.FC<VideosViewProps> = ({
               </div>
 
               {quizError && (
-                <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{quizError}</span>
+                <div
+                  role="alert"
+                  className="p-3.5 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-800 dark:text-[#FB7185]"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{quizError.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={quizLoading || evalLoading}
+                    onClick={() => {
+                      if (quizError.action === 'evaluate') {
+                        void submitVideoTest();
+                      } else {
+                        void handleStartVideoTest();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Try again</span>
+                  </button>
                 </div>
               )}
 

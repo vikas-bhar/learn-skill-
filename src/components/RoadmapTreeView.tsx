@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Loader2,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import {
   MasteryEvaluation,
@@ -21,6 +22,7 @@ import {
   SkillTreeData,
 } from '../types/learning';
 import { safeApiPost, toUserFriendlyError } from '../lib/errors';
+import { useToast } from '../context/ToastContext';
 
 interface RoadmapTreeViewProps {
   skillTree: SkillTreeData;
@@ -47,13 +49,17 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
 
+  const { showToast } = useToast();
   const [quiz, setQuiz] = useState<MasteryQuestion | null>(null);
   const [quizLoading, setQuizLoading] = useState(false);
   const [selectedOption, setSelectedOption] = useState('');
   const [customAnswer, setCustomAnswer] = useState('');
   const [evalLoading, setEvalLoading] = useState(false);
   const [evaluation, setEvaluation] = useState<MasteryEvaluation | null>(null);
-  const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizError, setQuizError] = useState<{
+    action: 'quiz' | 'evaluate';
+    message: string;
+  } | null>(null);
 
   const selectedNode =
     skillTree.nodes.find((n) => n.id === selectedNodeId) ||
@@ -328,7 +334,7 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
   };
 
   const handleLoadQuiz = async () => {
-    if (!selectedNode) return;
+    if (!selectedNode || quizLoading) return;
     setQuizLoading(true);
     setQuizError(null);
     setEvaluation(null);
@@ -341,15 +347,16 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
       });
       setQuiz(data);
     } catch (err) {
-      setQuizError(toUserFriendlyError(err, 'Could not load mastery check.'));
+      const friendly = toUserFriendlyError(err, 'Could not load mastery check.');
+      setQuizError({ action: 'quiz', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setQuizLoading(false);
     }
   };
 
-  const handleEvaluate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedNode || !quiz) return;
+  const submitEvaluation = async () => {
+    if (!selectedNode || !quiz || evalLoading) return;
     const answerText = (customAnswer.trim() || selectedOption).trim();
     if (!answerText) return;
 
@@ -365,10 +372,17 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
       setEvaluation(data);
       onUpdateNodeStatus(selectedNode.id, data.passed);
     } catch (err) {
-      setQuizError(toUserFriendlyError(err, 'Evaluation failed.'));
+      const friendly = toUserFriendlyError(err, 'Evaluation failed. Please try again.');
+      setQuizError({ action: 'evaluate', message: friendly });
+      showToast(friendly, 'error');
     } finally {
       setEvalLoading(false);
     }
+  };
+
+  const handleEvaluate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitEvaluation();
   };
 
   const DetailsPanel = selectedNode ? (
@@ -492,7 +506,30 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
       </div>
 
       {quizError && (
-        <p className="text-xs text-rose-600 dark:text-[#FB7185]">{quizError}</p>
+        <div
+          role="alert"
+          className="p-3.5 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 space-y-2.5 text-xs text-rose-800 dark:text-[#FB7185]"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{quizError.message}</span>
+          </div>
+          <button
+            type="button"
+            disabled={quizLoading || evalLoading}
+            onClick={() => {
+              if (quizError.action === 'evaluate') {
+                void submitEvaluation();
+              } else {
+                void handleLoadQuiz();
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg bg-white dark:bg-[#11182B] border border-rose-200 dark:border-[#FB7185]/40 text-rose-700 dark:text-white font-semibold inline-flex items-center gap-1.5 hover:border-rose-300 cursor-pointer disabled:opacity-50"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Try again</span>
+          </button>
+        </div>
       )}
 
       {quiz && (
