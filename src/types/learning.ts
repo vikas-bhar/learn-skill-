@@ -87,12 +87,48 @@ export interface FinalExamResult {
   completedAtIso: string;
 }
 
+export interface CapstoneProjectItem {
+  id: string;
+  title: string;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  estimatedHours: string;
+  brief: string;
+  deliverables: string[];
+  acceptanceCriteria: string[];
+  status: 'pending' | 'passed' | 'needs_revision';
+  submissionText?: string;
+  submissionUrl?: string;
+  score?: number;
+  pointsAwarded?: number;
+  feedback?: string;
+  strengths?: string[];
+  improvements?: string[];
+  completedAtIso?: string;
+}
+
+export interface CapstoneProjectsPayload {
+  topic: string;
+  projects: CapstoneProjectItem[];
+}
+
+export interface ProjectEvaluationResponse {
+  projectId: string;
+  score: number;
+  passed: boolean;
+  pointsAwarded: number;
+  feedback: string;
+  strengths: string[];
+  improvements: string[];
+  completedAtIso: string;
+}
+
 export interface SkillCertificate {
   certificateId: string;
   learnerName: string;
   topic: string;
   finalScore: number;
   totalScore: number;
+  projectsCompleted?: number;
   level: LearnerLevel;
   strengthSummary: string;
   issuedAtIso: string;

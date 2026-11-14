@@ -14,8 +14,9 @@
 4. **Path Variable & Volumetric Guards**:
    - Every document ID path variable (`userId`, `profileDocId`, `pathId`) is validated with `isValidId(...)` (`<= 128` chars, `^[a-zA-Z0-9_\-]+$`) on single-document operations (`get`, `create`, `update`, `delete`).
    - Every string and array enforces explicit `.size()` boundaries, and bounded arrays validate first-element types when non-empty.
-5. **Terminal State Locking (Certificates)**:
+5. **Terminal State Locking (Certificates) & Project Gating**:
    - Once a `certificate` map is issued on a `learningPaths/{pathId}` document, it cannot be altered or overwritten by subsequent client updates.
+   - Assigned `capstoneProjects` arrays on `learningPaths/{pathId}` are strictly bounded (`<= 10` items) and updated only through dedicated allowlisted `affectedKeys().hasOnly(...)` action branches.
 6. **Temporal Integrity & Immutability**:
    - `createdAt` must equal `request.time` on `create` and remain immutable on `update`.
    - `updatedAt` must equal `request.time` on `create` and `update`.

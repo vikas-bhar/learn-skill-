@@ -12,16 +12,17 @@ import {
   TrendingUp,
   Sun,
   Moon,
-  LogIn,
   LogOut,
   Loader2,
   AlertTriangle,
   LayoutDashboard,
+  Menu,
   X,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { SavedLearningPath } from '../lib/learningStore';
 import { SkillPathLogo } from './SkillPathLogo';
+import { GoogleGIcon } from './GoogleGIcon';
 
 interface LandingPageProps {
   isDark: boolean;
@@ -104,9 +105,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const [pendingTopic, setPendingTopic] = React.useState<string | undefined>(undefined);
   const [showModeModal, setShowModeModal] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const firstName = user?.displayName?.split(' ')[0] || 'Learner';
 
   const handleRequestStart = (presetTopic?: string) => {
+    setMobileMenuOpen(false);
     if (user) {
       onStartSetup(presetTopic);
       return;
@@ -129,15 +132,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* Sticky Glass Top Navigation */}
       <header className="sticky top-0 z-40 border-b border-slate-200/80 dark:border-[#273554] bg-white/80 dark:bg-[#0B1020]/80 backdrop-blur-md">
-        <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between gap-8">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-6">
           <a
             href="#top"
-            className="focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6D5DFB] rounded-lg"
+            className="shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6D5DFB] rounded-lg"
           >
             <SkillPathLogo />
           </a>
 
-          <nav aria-label="Landing navigation" className="hidden md:flex items-center gap-7 text-sm font-medium text-slate-600 dark:text-[#AAB4C8]">
+          <nav aria-label="Landing navigation" className="hidden md:flex items-center gap-6 lg:gap-7 text-sm font-medium text-slate-600 dark:text-[#AAB4C8]">
             <a
               href="#how-it-works"
               className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
@@ -165,82 +168,213 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </button>
           </nav>
 
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={onToggleTheme}
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-2 rounded-lg text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] p-2 rounded-lg text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] transition-colors flex items-center justify-center cursor-pointer"
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {authReady && user ? (
-              <div className="flex items-center gap-2">
-                {savedPaths.length > 0 && (
+            <div className="hidden md:flex items-center gap-2.5 shrink-0">
+              {authReady && user ? (
+                <div className="flex items-center gap-2">
+                  {savedPaths.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenSavedPath(savedPaths[0])}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-[#F8FAFC] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-colors whitespace-nowrap cursor-pointer"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5 text-[#4D8DFF]" />
+                      <span>My Roadmap</span>
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554]">
+                    {user.photoURL ? (
+                      <img
+                        src={user.photoURL}
+                        alt={firstName}
+                        referrerPolicy="no-referrer"
+                        className="w-5 h-5 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6D5DFB] to-[#4D8DFF] text-white text-[10px] font-bold flex items-center justify-center">
+                        {firstName.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className="text-xs font-medium text-slate-800 dark:text-[#F8FAFC] max-w-[100px] truncate">
+                      {firstName}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => onOpenSavedPath(savedPaths[0])}
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-[#F8FAFC] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-colors whitespace-nowrap cursor-pointer"
+                    onClick={() => void onSignOut()}
+                    disabled={authLoading}
+                    title="Sign out"
+                    aria-label="Sign out"
+                    className="p-2 rounded-[10px] text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] border border-transparent hover:border-slate-200 dark:hover:border-[#273554] transition-colors cursor-pointer"
                   >
-                    <LayoutDashboard className="w-3.5 h-3.5 text-[#4D8DFF]" />
-                    <span>My Roadmap</span>
+                    <LogOut className="w-4 h-4" />
                   </button>
-                )}
-                <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554]">
-                  {user.photoURL ? (
-                    <img
-                      src={user.photoURL}
-                      alt={firstName}
-                      referrerPolicy="no-referrer"
-                      className="w-5 h-5 rounded-full object-cover"
-                    />
-                  ) : (
-                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6D5DFB] to-[#4D8DFF] text-white text-[10px] font-bold flex items-center justify-center">
-                      {firstName.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                  <span className="text-xs font-medium text-slate-800 dark:text-[#F8FAFC] max-w-[100px] truncate">
-                    {firstName}
-                  </span>
                 </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => void onSignOut()}
-                  disabled={authLoading}
-                  title="Sign out"
-                  aria-label="Sign out"
-                  className="p-2 rounded-[10px] text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] border border-transparent hover:border-slate-200 dark:hover:border-[#273554] transition-colors cursor-pointer"
+                  onClick={() => void onSignIn()}
+                  disabled={!authReady || authLoading}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-[#F8FAFC] bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-all inline-flex items-center gap-2 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
                 >
-                  <LogOut className="w-4 h-4" />
+                  {authLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6D5DFB]" />
+                  ) : (
+                    <GoogleGIcon className="w-4 h-4" />
+                  )}
+                  <span>Continue with Google</span>
                 </button>
-              </div>
-            ) : (
+              )}
+
               <button
                 type="button"
-                onClick={() => void onSignIn()}
-                disabled={!authReady || authLoading}
-                className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 dark:text-[#F8FAFC] bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-all inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                onClick={() => handleRequestStart()}
+                className="px-4 py-2 text-sm font-semibold text-white rounded-[10px] bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] hover:shadow-[0_0_24px_rgba(109,93,251,0.45)] transition-all whitespace-nowrap shrink-0 cursor-pointer"
               >
-                {authLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6D5DFB]" />
-                ) : (
-                  <LogIn className="w-3.5 h-3.5 text-[#4D8DFF]" />
-                )}
-                <span>Sign In</span>
+                Build My Path
               </button>
-            )}
+            </div>
 
             <button
               type="button"
-              onClick={() => handleRequestStart()}
-              className="px-4 py-2 text-sm font-semibold text-white rounded-[10px] bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] hover:shadow-[0_0_24px_rgba(109,93,251,0.45)] transition-all whitespace-nowrap shrink-0 cursor-pointer"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-landing-menu"
+              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              className="md:hidden min-w-[44px] min-h-[44px] rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-700 dark:text-[#F8FAFC] flex items-center justify-center cursor-pointer"
             >
-              Build My Path
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
+
+        {/* Mobile Menu Sheet */}
+        {mobileMenuOpen && (
+          <div
+            id="mobile-landing-menu"
+            className="md:hidden border-t border-slate-200 dark:border-[#273554] bg-white dark:bg-[#11182B] px-4 py-5 space-y-4 shadow-2xl"
+          >
+            <nav aria-label="Mobile navigation" className="flex flex-col space-y-1">
+              <a
+                href="#how-it-works"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-[#AAB4C8] hover:bg-slate-100 dark:hover:bg-[#17213A] hover:text-slate-900 dark:hover:text-white"
+              >
+                How It Works
+              </a>
+              <a
+                href="#features"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-[#AAB4C8] hover:bg-slate-100 dark:hover:bg-[#17213A] hover:text-slate-900 dark:hover:text-white"
+              >
+                Features
+              </a>
+              <a
+                href="#explore-skills"
+                onClick={() => setMobileMenuOpen(false)}
+                className="px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-[#AAB4C8] hover:bg-slate-100 dark:hover:bg-[#17213A] hover:text-slate-900 dark:hover:text-white"
+              >
+                Explore Skills
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onTryDemo();
+                }}
+                className="text-left px-3 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-[#AAB4C8] hover:bg-slate-100 dark:hover:bg-[#17213A] hover:text-slate-900 dark:hover:text-white cursor-pointer"
+              >
+                Demo Mode
+              </button>
+            </nav>
+
+            <div className="pt-3 border-t border-slate-200 dark:border-[#273554] space-y-2.5">
+              {authReady && user ? (
+                <>
+                  <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#17213A]">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {user.photoURL ? (
+                        <img
+                          src={user.photoURL}
+                          alt={firstName}
+                          referrerPolicy="no-referrer"
+                          className="w-6 h-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6D5DFB] to-[#4D8DFF] text-white text-[11px] font-bold flex items-center justify-center">
+                          {firstName.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                        {firstName}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        void onSignOut();
+                      }}
+                      className="text-xs font-semibold text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign out</span>
+                    </button>
+                  </div>
+                  {savedPaths.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onOpenSavedPath(savedPaths[0]);
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-sm font-semibold text-slate-800 dark:text-white inline-flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <LayoutDashboard className="w-4 h-4 text-[#4D8DFF]" />
+                      <span>Open My Roadmap</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    void onSignIn();
+                  }}
+                  disabled={!authReady || authLoading}
+                  className="w-full py-2.5 px-4 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-sm font-semibold text-slate-800 dark:text-white inline-flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#6D5DFB]" />
+                  ) : (
+                    <GoogleGIcon className="w-4 h-4" />
+                  )}
+                  <span>Continue with Google</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleRequestStart()}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Build My Path</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       {authError && (
@@ -272,10 +406,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <span>AI-Powered Personalized Learning</span>
               </div>
 
-              <h1 className="font-display text-[38px] sm:text-[48px] lg:text-[56px] font-bold tracking-tight leading-[1.08] text-slate-900 dark:text-[#F8FAFC]">
-                Stop guessing what to{' '}
-                <span className="bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] bg-clip-text text-transparent">
-                  learn next.
+              <h1 className="font-display text-[32px] sm:text-[48px] lg:text-[56px] font-bold tracking-tight leading-[1.1] text-slate-900 dark:text-[#F8FAFC]">
+                Stop guessing{' '}
+                <span className="inline-block">
+                  what to{' '}
+                  <span className="bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] bg-clip-text text-transparent">
+                    learn next.
+                  </span>
                 </span>
               </h1>
 
@@ -693,9 +830,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 type="button"
                 onClick={() => setShowModeModal(false)}
                 aria-label="Close dialog"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                className="min-w-[44px] min-h-[44px] -mr-2 -mt-2 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] transition-colors shrink-0 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
@@ -728,14 +865,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                     }
                   })();
                 }}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full py-3 px-4 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-slate-900 dark:text-white text-sm font-semibold inline-flex items-center justify-center gap-2.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 {authLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin text-[#6D5DFB]" />
                 ) : (
-                  <LogIn className="w-4 h-4" />
+                  <GoogleGIcon className="w-4 h-4" />
                 )}
-                <span>Sign in with Google (Real Cloud Sync)</span>
+                <span>Continue with Google</span>
               </button>
 
               <button

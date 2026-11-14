@@ -13,17 +13,24 @@ import {
   ArrowRight,
   Loader2,
   HelpCircle,
+  FolderGit2,
+  Send,
+  Clock,
+  Link2,
 } from 'lucide-react';
 import {
+  CapstoneProjectItem,
   DiagnosticProfile,
   FinalExamEvaluation,
   FinalExamPayload,
   FinalExamResult,
   LearnerScoreProfile,
+  ProjectEvaluationResponse,
   SkillCertificate,
   SkillTreeData,
   VideoTestResult,
 } from '../types/learning';
+import { safeApiPost, toUserFriendlyError } from '../lib/errors';
 
 interface FinalExamCertificateViewProps {
   profile: DiagnosticProfile;
@@ -31,6 +38,7 @@ interface FinalExamCertificateViewProps {
   scoreProfile: LearnerScoreProfile;
   videoTestResults: VideoTestResult[];
   finalExam: FinalExamResult | null;
+  capstoneProjects: CapstoneProjectItem[];
   certificate: SkillCertificate | null;
   defaultLearnerName: string;
   isDemoMode: boolean;
@@ -38,6 +46,12 @@ interface FinalExamCertificateViewProps {
   onGoToVideos: () => void;
   onFinalExamEvaluated: (
     evaluation: FinalExamEvaluation,
+    learnerName: string
+  ) => Promise<void>;
+  onProjectsGenerated: (projects: CapstoneProjectItem[]) => Promise<void>;
+  onProjectEvaluated: (
+    updatedProjects: CapstoneProjectItem[],
+    evaluation: ProjectEvaluationResponse,
     learnerName: string
   ) => Promise<void>;
 }
@@ -98,11 +112,9 @@ function downloadCertificatePng(cert: SkillCertificate): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Deep Midnight Navy background
   ctx.fillStyle = '#0B1020';
   ctx.fillRect(0, 0, 1600, 1100);
 
-  // Subtle corner glow accents
   const gradTop = ctx.createRadialGradient(260, 180, 20, 260, 180, 520);
   gradTop.addColorStop(0, 'rgba(109, 93, 251, 0.22)');
   gradTop.addColorStop(1, 'rgba(11, 16, 32, 0)');
@@ -115,11 +127,9 @@ function downloadCertificatePng(cert: SkillCertificate): void {
   ctx.fillStyle = gradBottom;
   ctx.fillRect(0, 0, 1600, 1100);
 
-  // Card surface
   ctx.fillStyle = '#11182B';
   ctx.fillRect(64, 64, 1472, 972);
 
-  // Outer and inner border frames
   ctx.strokeStyle = '#6D5DFB';
   ctx.lineWidth = 3;
   ctx.strokeRect(64, 64, 1472, 972);
@@ -128,7 +138,6 @@ function downloadCertificatePng(cert: SkillCertificate): void {
   ctx.lineWidth = 1.5;
   ctx.strokeRect(86, 86, 1428, 928);
 
-  // Brand heading
   ctx.textAlign = 'center';
   ctx.fillStyle = '#A78BFA';
   ctx.font = '600 22px "Plus Jakarta Sans", sans-serif';
@@ -138,7 +147,6 @@ function downloadCertificatePng(cert: SkillCertificate): void {
   ctx.font = '700 54px "Sora", sans-serif';
   ctx.fillText('Certificate of Mastery', 800, 255);
 
-  // Divider
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -157,7 +165,7 @@ function downloadCertificatePng(cert: SkillCertificate): void {
   ctx.fillStyle = '#AAB4C8';
   ctx.font = '500 24px "Plus Jakarta Sans", sans-serif';
   ctx.fillText(
-    'has completed every module and passed the Final AI Certification Exam in',
+    'has completed all modules, capstone projects, and Final AI Exam in',
     800,
     520
   );
@@ -177,11 +185,13 @@ function downloadCertificatePng(cert: SkillCertificate): void {
     34
   );
 
-  // Stats boxes
   const stats = [
-    { label: 'Final AI Exam Score', value: `${cert.finalScore}%` },
+    { label: 'Final AI Exam', value: `${cert.finalScore}%` },
+    {
+      label: 'Projects Verified',
+      value: `${cert.projectsCompleted ?? 2} Completed`,
+    },
     { label: 'Profile Score', value: `${cert.totalScore} pts` },
-    { label: 'Verified Level', value: sanitizeTextForCanvas(cert.level) },
     { label: 'Issued Date', value: sanitizeTextForCanvas(formatReadableDate(cert.issuedAtIso)) },
   ];
 
@@ -204,16 +214,15 @@ function downloadCertificatePng(cert: SkillCertificate): void {
     ctx.fillText(item.label, bx + boxWidth / 2, 798);
 
     ctx.fillStyle = '#F8FAFC';
-    ctx.font = '700 26px "Sora", sans-serif';
+    ctx.font = '700 24px "Sora", sans-serif';
     ctx.fillText(item.value, bx + boxWidth / 2, 845);
   });
 
-  // Footer verification line
   ctx.textAlign = 'center';
   ctx.fillStyle = '#73809B';
   ctx.font = '500 18px "IBM Plex Mono", monospace';
   ctx.fillText(
-    `Credential ID ${sanitizeTextForCanvas(cert.certificateId)}  -  Verified by SkillPath AI Examination`,
+    `Credential ID ${sanitizeTextForCanvas(cert.certificateId)}  -  Verified by SkillPath AI`,
     800,
     955
   );
@@ -231,12 +240,15 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
   scoreProfile,
   videoTestResults,
   finalExam,
+  capstoneProjects,
   certificate,
   defaultLearnerName,
   isDemoMode,
   onGoToRoadmap,
   onGoToVideos,
   onFinalExamEvaluated,
+  onProjectsGenerated,
+  onProjectEvaluated,
 }) => {
   const [examPayload, setExamPayload] = useState<FinalExamPayload | null>(null);
   const [examLoading, setExamLoading] = useState(false);
@@ -248,12 +260,24 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
   const [latestEvaluation, setLatestEvaluation] = useState<FinalExamEvaluation | null>(null);
   const [customName, setCustomName] = useState(defaultLearnerName);
 
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [projectTexts, setProjectTexts] = useState<Record<string, string>>({});
+  const [projectUrls, setProjectUrls] = useState<Record<string, string>>({});
+  const [submittingProjectId, setSubmittingProjectId] = useState<string | null>(null);
+
   const nodes = skillTree.nodes || [];
   const totalCount = nodes.length;
   const masteredCount = nodes.filter((n) => n.status === 'mastered').length;
   const remainingNodes = nodes.filter((n) => n.status !== 'mastered');
   const allModulesMastered = totalCount > 0 && masteredCount === totalCount;
   const skillCompletionPct = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
+
+  const assignedProjectsCount = capstoneProjects.length;
+  const passedProjectsCount = capstoneProjects.filter((p) => p.status === 'passed').length;
+  const allProjectsPassed =
+    assignedProjectsCount > 0 && passedProjectsCount === assignedProjectsCount;
+  const examPassed = Boolean(finalExam?.passed);
 
   const avgVideoScore =
     videoTestResults.length > 0
@@ -271,27 +295,21 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
     setHintsOpen({});
 
     try {
-      const res = await fetch('/api/skill-tree/final-exam/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: skillTree.topic,
-          goal: profile.goal,
-          estimatedLevel: profile.estimatedLevel,
-          nodes: skillTree.nodes.map((n) => ({
-            id: n.id,
-            title: n.title,
-            summary: n.summary,
-            tier: n.tier,
-          })),
-        }),
+      const data = await safeApiPost<FinalExamPayload>('/api/skill-tree/final-exam/generate', {
+        topic: skillTree.topic,
+        goal: profile.goal,
+        estimatedLevel: profile.estimatedLevel,
+        nodes: skillTree.nodes.map((n) => ({
+          id: n.id,
+          title: n.title,
+          summary: n.summary,
+          tier: n.tier,
+        })),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not generate final certification exam.');
-      setExamPayload(data as FinalExamPayload);
+      setExamPayload(data);
     } catch (err) {
       setExamError(
-        err instanceof Error ? err.message : 'Unable to start the final AI exam right now.'
+        toUserFriendlyError(err, 'Unable to start the final AI exam right now.')
       );
     } finally {
       setExamLoading(false);
@@ -319,32 +337,114 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
         };
       });
 
-      const res = await fetch('/api/skill-tree/final-exam/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: skillTree.topic,
-          estimatedLevel: profile.estimatedLevel,
-          questions: examPayload.questions.map((q) => ({
-            id: q.id,
-            prompt: q.prompt,
-            moduleTitle: q.moduleTitle,
-          })),
-          userAnswers,
-        }),
+      const data = await safeApiPost<FinalExamEvaluation>('/api/skill-tree/final-exam/evaluate', {
+        topic: skillTree.topic,
+        estimatedLevel: profile.estimatedLevel,
+        questions: examPayload.questions.map((q) => ({
+          id: q.id,
+          prompt: q.prompt,
+          moduleTitle: q.moduleTitle,
+        })),
+        userAnswers,
       });
-      const data = (await res.json()) as FinalExamEvaluation & { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Failed to grade final exam.');
 
       setLatestEvaluation(data);
       const recipientName = (customName.trim() || defaultLearnerName || 'Learner').trim();
       await onFinalExamEvaluated(data, recipientName);
     } catch (err) {
       setExamError(
-        err instanceof Error ? err.message : 'Could not evaluate final exam answers.'
+        toUserFriendlyError(err, 'Could not evaluate final exam answers.')
       );
     } finally {
       setEvalLoading(false);
+    }
+  };
+
+  const handleGenerateProjects = async () => {
+    setProjectsLoading(true);
+    setProjectsError(null);
+    try {
+      const data = await safeApiPost<{ projects?: CapstoneProjectItem[] }>(
+        '/api/skill-tree/projects/generate',
+        {
+          topic: skillTree.topic,
+          goal: profile.goal,
+          estimatedLevel: profile.estimatedLevel,
+          nodes: skillTree.nodes.map((n) => ({
+            id: n.id,
+            title: n.title,
+            summary: n.summary,
+            tier: n.tier,
+          })),
+        }
+      );
+      const list = (data.projects || []) as CapstoneProjectItem[];
+      await onProjectsGenerated(list);
+    } catch (err) {
+      setProjectsError(
+        toUserFriendlyError(err, 'Unable to generate assigned projects right now.')
+      );
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  const handleSubmitProject = async (e: React.FormEvent, project: CapstoneProjectItem) => {
+    e.preventDefault();
+    const submissionText = (projectTexts[project.id] ?? project.submissionText ?? '').trim();
+    const submissionUrl = (projectUrls[project.id] ?? project.submissionUrl ?? '').trim();
+    if (submissionText.length < 20) {
+      setProjectsError(
+        'Please describe your implemented solution, key steps, and deliverables (at least 20 characters).'
+      );
+      return;
+    }
+
+    setSubmittingProjectId(project.id);
+    setProjectsError(null);
+    try {
+      const data = await safeApiPost<ProjectEvaluationResponse>(
+        '/api/skill-tree/projects/evaluate',
+        {
+          topic: skillTree.topic,
+          estimatedLevel: profile.estimatedLevel,
+          project: {
+            id: project.id,
+            title: project.title,
+            brief: project.brief,
+            deliverables: project.deliverables,
+            acceptanceCriteria: project.acceptanceCriteria,
+          },
+          submissionText,
+          submissionUrl,
+        }
+      );
+
+      const updatedProjects: CapstoneProjectItem[] = capstoneProjects.map((item) =>
+        item.id === project.id
+          ? {
+              ...item,
+              status: data.passed ? 'passed' : 'needs_revision',
+              submissionText,
+              submissionUrl: submissionUrl || undefined,
+              score: data.score,
+              pointsAwarded: data.pointsAwarded,
+              feedback: data.feedback,
+              strengths: data.strengths,
+              improvements: data.improvements,
+              completedAtIso: data.completedAtIso,
+            }
+          : item
+      );
+
+      const recipientName = (customName.trim() || defaultLearnerName || 'Learner').trim();
+      await onProjectEvaluated(updatedProjects, data, recipientName);
+    } catch (err) {
+      setProjectsError(
+        toUserFriendlyError(err, 'Project evaluation failed. Please try again.')
+      );
+    } finally {
+      setSubmittingProjectId(null);
     }
   };
 
@@ -354,10 +454,10 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white">
-            Profile Score and Skill Certificate
+            Profile Score, Projects and Certificate
           </h2>
           <p className="text-sm text-slate-600 dark:text-[#AAB4C8]">
-            Earn profile points after every video test and unlock your AI-verified certificate by completing the full skill exam.
+            Earn points from video tests, pass the Final AI Exam, and complete your assigned capstone projects to unlock your Certificate of Mastery.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[#AAB4C8]">
@@ -426,10 +526,100 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
         </div>
       </div>
 
-      {/* Main Certificate OR Final AI Exam Stage */}
+      {/* 3-Step Certification Requirement Tracker */}
+      {!certificate && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div
+            className={`p-4 rounded-2xl border flex items-center gap-3 ${
+              allModulesMastered
+                ? 'bg-emerald-50/70 dark:bg-[#34D399]/10 border-emerald-200 dark:border-[#34D399]/35'
+                : 'bg-white dark:bg-[#17213A] border-slate-200 dark:border-[#273554]'
+            }`}
+          >
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                allModulesMastered
+                  ? 'bg-[#34D399] text-[#0B1020]'
+                  : 'bg-slate-100 dark:bg-[#11182B] text-slate-600 dark:text-[#AAB4C8]'
+              }`}
+            >
+              {allModulesMastered ? <CheckCircle2 className="w-4 h-4" /> : '1'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                Complete All Modules
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-[#AAB4C8] tabular-nums">
+                {masteredCount} of {totalCount} mastered
+              </p>
+            </div>
+          </div>
+
+          <div
+            className={`p-4 rounded-2xl border flex items-center gap-3 ${
+              examPassed
+                ? 'bg-emerald-50/70 dark:bg-[#34D399]/10 border-emerald-200 dark:border-[#34D399]/35'
+                : 'bg-white dark:bg-[#17213A] border-slate-200 dark:border-[#273554]'
+            }`}
+          >
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                examPassed
+                  ? 'bg-[#34D399] text-[#0B1020]'
+                  : 'bg-slate-100 dark:bg-[#11182B] text-slate-600 dark:text-[#AAB4C8]'
+              }`}
+            >
+              {examPassed ? <CheckCircle2 className="w-4 h-4" /> : '2'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                Pass Final AI Exam
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-[#AAB4C8] tabular-nums">
+                {examPassed
+                  ? `Passed with ${finalExam?.score}%`
+                  : allModulesMastered
+                  ? 'Unlocked (70% needed)'
+                  : 'Unlocks after modules'}
+              </p>
+            </div>
+          </div>
+
+          <div
+            className={`p-4 rounded-2xl border flex items-center gap-3 ${
+              allProjectsPassed
+                ? 'bg-emerald-50/70 dark:bg-[#34D399]/10 border-emerald-200 dark:border-[#34D399]/35'
+                : 'bg-white dark:bg-[#17213A] border-slate-200 dark:border-[#273554]'
+            }`}
+          >
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ${
+                allProjectsPassed
+                  ? 'bg-[#34D399] text-[#0B1020]'
+                  : 'bg-slate-100 dark:bg-[#11182B] text-slate-600 dark:text-[#AAB4C8]'
+              }`}
+            >
+              {allProjectsPassed ? <CheckCircle2 className="w-4 h-4" /> : '3'}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                Complete Assigned Projects
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-[#AAB4C8] tabular-nums">
+                {assignedProjectsCount > 0
+                  ? `${passedProjectsCount} of ${assignedProjectsCount} approved`
+                  : allModulesMastered
+                  ? 'Ready to generate'
+                  : 'Unlocks after modules'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Earned Certificate Card */}
       {certificate ? (
         <div className="space-y-5">
-          {/* Official Certificate of Mastery */}
           <div className="relative overflow-hidden rounded-2xl bg-[#0B1020] border-2 border-[#6D5DFB]/60 p-3 shadow-[0_0_40px_rgba(109,93,251,0.18)]">
             <div className="rounded-xl border border-[#FBBF24]/40 bg-[#11182B] px-6 py-10 md:px-14 md:py-12 text-center space-y-6">
               <div className="flex flex-col items-center gap-3">
@@ -452,7 +642,7 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
                   {certificate.learnerName}
                 </p>
                 <p className="text-sm text-[#AAB4C8] max-w-xl mx-auto leading-relaxed">
-                  has completed every module in the adaptive skill roadmap and passed the comprehensive Final AI Certification Examination in
+                  has completed every module, submitted approved capstone projects, and passed the Final AI Certification Examination in
                 </p>
                 <p className="font-display text-2xl font-bold text-[#4D8DFF] pt-1">
                   {certificate.topic}
@@ -471,15 +661,15 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
                   </p>
                 </div>
                 <div className="rounded-xl bg-[#17213A] border border-[#273554] p-3.5">
-                  <p className="text-[11px] text-[#73809B]">Profile Score</p>
+                  <p className="text-[11px] text-[#73809B]">Projects Verified</p>
                   <p className="font-display text-lg font-bold text-white mt-0.5 tabular-nums">
-                    {certificate.totalScore} pts
+                    {certificate.projectsCompleted ?? passedProjectsCount} Completed
                   </p>
                 </div>
                 <div className="rounded-xl bg-[#17213A] border border-[#273554] p-3.5">
-                  <p className="text-[11px] text-[#73809B]">Verified Level</p>
-                  <p className="font-display text-lg font-bold text-white mt-0.5">
-                    {certificate.level}
+                  <p className="text-[11px] text-[#73809B]">Profile Score</p>
+                  <p className="font-display text-lg font-bold text-white mt-0.5 tabular-nums">
+                    {certificate.totalScore} pts
                   </p>
                 </div>
                 <div className="rounded-xl bg-[#17213A] border border-[#273554] p-3.5">
@@ -507,61 +697,48 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
           </div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 md:p-8 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
-                {allModulesMastered ? (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>Final AI Certification Exam Unlocked</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4 text-slate-400" />
-                    <span className="text-slate-500 dark:text-[#AAB4C8]">
-                      Final AI Exam Locked Until Full Skill Completion
-                    </span>
-                  </>
-                )}
+        <div className="space-y-6">
+          {/* Recipient Name Input when unlocked */}
+          {allModulesMastered && isDemoMode && (
+            <div className="bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <label
+                  htmlFor="certificate-learner-name"
+                  className="block text-sm font-semibold text-slate-900 dark:text-white"
+                >
+                  Certificate Recipient Name
+                </label>
+                <p className="text-xs text-slate-500 dark:text-[#AAB4C8]">
+                  This name will appear on your Certificate of Mastery once your exam and projects are complete.
+                </p>
               </div>
-              <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white">
-                {allModulesMastered
-                  ? `Ready for your Final ${skillTree.topic} AI Exam`
-                  : `Complete all ${totalCount} modules to unlock your Certificate`}
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-[#AAB4C8] max-w-2xl">
-                {allModulesMastered
-                  ? 'Pass the 5-question comprehensive AI assessment (70% or higher) to add bonus points to your profile and generate your official Certificate of Mastery.'
-                  : 'Work through each module in your Learning Roadmap and pass its mastery check or complete it after studying the video. Once 100% of modules are complete, AI will administer your final certification exam.'}
-              </p>
+              <input
+                id="certificate-learner-name"
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="Enter your full name"
+                className="w-full sm:w-72 px-3.5 py-2 text-sm bg-slate-50 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#6D5DFB]/50"
+              />
             </div>
-
-            {allModulesMastered && !examPayload && (
-              <button
-                type="button"
-                onClick={() => void handleStartExam()}
-                disabled={examLoading}
-                className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
-              >
-                {examLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Preparing AI Exam…</span>
-                  </>
-                ) : (
-                  <>
-                    <Award className="w-4 h-4" />
-                    <span>{finalExam ? 'Retake Final AI Exam' : 'Start Final AI Exam'}</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+          )}
 
           {/* Module completion progress if still locked */}
           {!allModulesMastered && (
-            <div className="space-y-4">
+            <div className="bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 md:p-8 space-y-5">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-[#AAB4C8]">
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span>Final AI Exam and Projects Locked Until Full Skill Completion</span>
+                </div>
+                <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white">
+                  Complete all {totalCount} modules to unlock your Exam and Projects
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-[#AAB4C8] max-w-2xl">
+                  Work through each module in your Learning Roadmap. Once 100% of modules are mastered, you will take the Final AI Exam and complete 2 real-world capstone projects to earn your certificate.
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-slate-500 dark:text-[#AAB4C8] tabular-nums">
                   <span>Skill tree mastery progress</span>
@@ -610,184 +787,461 @@ export const FinalExamCertificateView: React.FC<FinalExamCertificateViewProps> =
             </div>
           )}
 
-          {examError && (
-            <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{examError}</span>
-            </div>
-          )}
-
-          {/* Previous failed attempt summary if present and not currently retaking */}
-          {finalExam && !finalExam.passed && !examPayload && (
-            <div className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 space-y-1.5">
-              <p className="text-xs font-semibold text-amber-900 dark:text-[#FBBF24]">
-                Previous Final Exam Attempt: {finalExam.score}% (70% needed for certificate)
-              </p>
-              <p className="text-xs text-amber-800 dark:text-[#AAB4C8] leading-relaxed">
-                {finalExam.feedback}
-              </p>
-            </div>
-          )}
-
-          {/* Active 5-Question Final AI Exam Form */}
-          {examPayload && (
-            <form onSubmit={handleSubmitExam} className="space-y-6 pt-2 border-t border-slate-100 dark:border-[#273554]">
-              {isDemoMode && (
-                <div className="max-w-sm space-y-1.5">
-                  <label
-                    htmlFor="certificate-learner-name"
-                    className="block text-xs font-semibold text-slate-700 dark:text-[#AAB4C8]"
-                  >
-                    Name for Certificate
-                  </label>
-                  <input
-                    id="certificate-learner-name"
-                    type="text"
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder="Enter your full name"
-                    className="w-full px-3.5 py-2 text-sm bg-slate-50 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#6D5DFB]/50"
-                  />
-                </div>
-              )}
-
-              <div className="space-y-5">
-                {examPayload.questions.map((q, qIdx) => {
-                  const qResult = latestEvaluation?.questionResults?.find(
-                    (r) => r.questionId === q.id
-                  );
-                  return (
-                    <div
-                      key={q.id}
-                      className="p-5 rounded-2xl bg-slate-50 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] space-y-3.5"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-[#6D5DFB] dark:text-[#A78BFA]">
-                          Question {qIdx + 1} of {examPayload.questions.length} · {q.moduleTitle}
+          {/* Step 2: Final AI Certification Exam */}
+          {allModulesMastered && (
+            <div className="bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 md:p-8 space-y-5">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
+                    {examPassed ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-[#34D399]" />
+                        <span className="text-emerald-600 dark:text-[#34D399]">
+                          Step 2 Complete: Final AI Exam Passed ({finalExam?.score}%)
                         </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setHintsOpen((prev) => ({ ...prev, [q.id]: !prev[q.id] }))
-                          }
-                          className="text-xs text-slate-500 dark:text-[#73809B] hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <HelpCircle className="w-3.5 h-3.5" />
-                          <span>{hintsOpen[q.id] ? 'Hide Hint' : 'Hint'}</span>
-                        </button>
-                      </div>
-
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">
-                        {q.prompt}
-                      </p>
-
-                      {hintsOpen[q.id] && (
-                        <p className="text-xs text-slate-600 dark:text-[#AAB4C8] bg-white dark:bg-[#17213A] px-3 py-2 rounded-lg border border-slate-200 dark:border-[#273554]">
-                          {q.hint}
-                        </p>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {q.options.map((opt, optIdx) => {
-                          const selected = answers[q.id] === opt;
-                          return (
-                            <label
-                              key={optIdx}
-                              className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
-                                selected
-                                  ? 'border-[#6D5DFB] bg-indigo-50 dark:bg-[#6D5DFB]/15 text-slate-900 dark:text-white'
-                                  : 'border-slate-200 dark:border-[#273554] bg-white dark:bg-[#17213A] text-slate-700 dark:text-[#AAB4C8]'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name={`final-q-${q.id}`}
-                                value={opt}
-                                checked={selected}
-                                onChange={() =>
-                                  setAnswers((prev) => ({ ...prev, [q.id]: opt }))
-                                }
-                                className="mt-0.5 accent-[#6D5DFB]"
-                              />
-                              <span>{opt}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-
-                      <input
-                        type="text"
-                        value={notesByQ[q.id] || ''}
-                        onChange={(e) =>
-                          setNotesByQ((prev) => ({ ...prev, [q.id]: e.target.value }))
-                        }
-                        placeholder="Optional: explain your reasoning in your own words…"
-                        className="w-full px-3.5 py-2 text-xs bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400"
-                      />
-
-                      {qResult && (
-                        <div
-                          className={`p-3 rounded-xl text-xs leading-relaxed ${
-                            qResult.correct
-                              ? 'bg-emerald-50 dark:bg-[#34D399]/10 text-emerald-800 dark:text-[#34D399]'
-                              : 'bg-amber-50 dark:bg-[#FBBF24]/10 text-amber-800 dark:text-[#FBBF24]'
-                          }`}
-                        >
-                          <span className="font-semibold mr-1.5">
-                            {qResult.correct ? 'Correct:' : 'Needs review:'}
-                          </span>
-                          {qResult.feedback}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {latestEvaluation && !latestEvaluation.passed && (
-                <div className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-amber-900 dark:text-[#FBBF24]">
-                      Score: {latestEvaluation.score}% · {latestEvaluation.pointsAwarded} pts added to your profile
-                    </p>
-                    <p className="text-xs text-amber-800 dark:text-[#AAB4C8]">
-                      {latestEvaluation.feedback} Score 70% or higher to earn your Certificate of Mastery.
-                    </p>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Step 2: Final AI Certification Exam</span>
+                      </>
+                    )}
                   </div>
+                  <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white">
+                    {examPassed
+                      ? `Final ${skillTree.topic} Exam Verified`
+                      : `Take Your Final ${skillTree.topic} AI Exam`}
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-[#AAB4C8] max-w-2xl">
+                    {examPassed
+                      ? finalExam?.feedback ||
+                        'You passed the comprehensive AI exam. Complete the assigned capstone projects below to unlock your certificate.'
+                      : 'Answer 5 comprehensive questions across all modules (70% or higher required) and earn bonus points toward your profile.'}
+                  </p>
+                </div>
+
+                {!examPassed && !examPayload && (
                   <button
                     type="button"
                     onClick={() => void handleStartExam()}
-                    className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-[#0B1020] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                    disabled={examLoading}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Retake Final Exam</span>
+                    {examLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Preparing AI Exam…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Award className="w-4 h-4" />
+                        <span>{finalExam ? 'Retake Final AI Exam' : 'Start Final AI Exam'}</span>
+                      </>
+                    )}
                   </button>
+                )}
+              </div>
+
+              {examError && (
+                <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{examError}</span>
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-slate-500 dark:text-[#73809B]">
-                  Answer all 5 questions for AI scoring. Minimum passing score is 70%.
-                </p>
-                <button
-                  type="submit"
-                  disabled={evalLoading || !allQuestionsAnswered}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40"
-                >
-                  {evalLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>AI Grading Final Exam…</span>
-                    </>
-                  ) : (
-                    <>
-                      <Award className="w-4 h-4" />
-                      <span>Submit Final Exam for AI Score</span>
-                    </>
+              {finalExam && !finalExam.passed && !examPayload && (
+                <div className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 space-y-1.5">
+                  <p className="text-xs font-semibold text-amber-900 dark:text-[#FBBF24]">
+                    Previous Final Exam Attempt: {finalExam.score}% (70% needed)
+                  </p>
+                  <p className="text-xs text-amber-800 dark:text-[#AAB4C8] leading-relaxed">
+                    {finalExam.feedback}
+                  </p>
+                </div>
+              )}
+
+              {examPayload && !examPassed && (
+                <form onSubmit={handleSubmitExam} className="space-y-6 pt-2 border-t border-slate-100 dark:border-[#273554]">
+                  <div className="space-y-5">
+                    {examPayload.questions.map((q, qIdx) => {
+                      const qResult = latestEvaluation?.questionResults?.find(
+                        (r) => r.questionId === q.id
+                      );
+                      return (
+                        <div
+                          key={q.id}
+                          className="p-5 rounded-2xl bg-slate-50 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] space-y-3.5"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-[#6D5DFB] dark:text-[#A78BFA]">
+                              Question {qIdx + 1} of {examPayload.questions.length} · {q.moduleTitle}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setHintsOpen((prev) => ({ ...prev, [q.id]: !prev[q.id] }))
+                              }
+                              className="text-xs text-slate-500 dark:text-[#73809B] hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <HelpCircle className="w-3.5 h-3.5" />
+                              <span>{hintsOpen[q.id] ? 'Hide Hint' : 'Hint'}</span>
+                            </button>
+                          </div>
+
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">
+                            {q.prompt}
+                          </p>
+
+                          {hintsOpen[q.id] && (
+                            <p className="text-xs text-slate-600 dark:text-[#AAB4C8] bg-white dark:bg-[#17213A] px-3 py-2 rounded-lg border border-slate-200 dark:border-[#273554]">
+                              {q.hint}
+                            </p>
+                          )}
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {q.options.map((opt, optIdx) => {
+                              const selected = answers[q.id] === opt;
+                              return (
+                                <label
+                                  key={optIdx}
+                                  className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
+                                    selected
+                                      ? 'border-[#6D5DFB] bg-indigo-50 dark:bg-[#6D5DFB]/15 text-slate-900 dark:text-white'
+                                      : 'border-slate-200 dark:border-[#273554] bg-white dark:bg-[#17213A] text-slate-700 dark:text-[#AAB4C8]'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`final-q-${q.id}`}
+                                    value={opt}
+                                    checked={selected}
+                                    onChange={() =>
+                                      setAnswers((prev) => ({ ...prev, [q.id]: opt }))
+                                    }
+                                    className="mt-0.5 accent-[#6D5DFB]"
+                                  />
+                                  <span>{opt}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+
+                          <input
+                            type="text"
+                            value={notesByQ[q.id] || ''}
+                            onChange={(e) =>
+                              setNotesByQ((prev) => ({ ...prev, [q.id]: e.target.value }))
+                            }
+                            placeholder="Optional: explain your reasoning in your own words…"
+                            className="w-full px-3.5 py-2 text-xs bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400"
+                          />
+
+                          {qResult && (
+                            <div
+                              className={`p-3 rounded-xl text-xs leading-relaxed ${
+                                qResult.correct
+                                  ? 'bg-emerald-50 dark:bg-[#34D399]/10 text-emerald-800 dark:text-[#34D399]'
+                                  : 'bg-amber-50 dark:bg-[#FBBF24]/10 text-amber-800 dark:text-[#FBBF24]'
+                              }`}
+                            >
+                              <span className="font-semibold mr-1.5">
+                                {qResult.correct ? 'Correct:' : 'Needs review:'}
+                              </span>
+                              {qResult.feedback}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {latestEvaluation && !latestEvaluation.passed && (
+                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-amber-900 dark:text-[#FBBF24]">
+                          Score: {latestEvaluation.score}% · {latestEvaluation.pointsAwarded} pts added to your profile
+                        </p>
+                        <p className="text-xs text-amber-800 dark:text-[#AAB4C8]">
+                          {latestEvaluation.feedback} Score 70% or higher to pass the Final Exam.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleStartExam()}
+                        className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-[#0B1020] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Retake Final Exam</span>
+                      </button>
+                    </div>
                   )}
-                </button>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500 dark:text-[#73809B]">
+                      Answer all 5 questions for AI scoring. Minimum passing score is 70%.
+                    </p>
+                    <button
+                      type="submit"
+                      disabled={evalLoading || !allQuestionsAnswered}
+                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40"
+                    >
+                      {evalLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>AI Grading Final Exam…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Award className="w-4 h-4" />
+                          <span>Submit Final Exam for AI Score</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Assigned Real-World Capstone Projects */}
+          {allModulesMastered && (
+            <div className="bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 md:p-8 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
+                    <FolderGit2 className="w-4 h-4" />
+                    <span>
+                      {allProjectsPassed
+                        ? 'Step 3 Complete: All Assigned Projects Approved'
+                        : 'Step 3: Hands-On Capstone Projects (Required for Certificate)'}
+                    </span>
+                  </div>
+                  <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white">
+                    Build and Submit Your {skillTree.topic} Projects
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-[#AAB4C8] max-w-2xl">
+                    After finishing the skill modules, complete these AI-assigned practical projects and submit your implementation summary for AI review to unlock your certificate.
+                  </p>
+                </div>
+
+                {capstoneProjects.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateProjects()}
+                    disabled={projectsLoading}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                  >
+                    {projectsLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Assigning Projects…</span>
+                      </>
+                    ) : (
+                      <>
+                        <FolderGit2 className="w-4 h-4" />
+                        <span>Get Assigned Projects</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
-            </form>
+
+              {projectsError && (
+                <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{projectsError}</span>
+                </div>
+              )}
+
+              {capstoneProjects.length > 0 && (
+                <div className="space-y-6">
+                  {capstoneProjects.map((project, idx) => {
+                    const isPassed = project.status === 'passed';
+                    const isSubmitting = submittingProjectId === project.id;
+                    const textVal = projectTexts[project.id] ?? project.submissionText ?? '';
+                    const urlVal = projectUrls[project.id] ?? project.submissionUrl ?? '';
+
+                    return (
+                      <div
+                        key={project.id}
+                        className={`rounded-2xl border p-5 md:p-6 space-y-5 ${
+                          isPassed
+                            ? 'bg-emerald-50/40 dark:bg-[#34D399]/5 border-emerald-200 dark:border-[#34D399]/35'
+                            : 'bg-slate-50 dark:bg-[#11182B] border-slate-200 dark:border-[#273554]'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="font-mono font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
+                                Project {idx + 1}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-700 dark:text-[#AAB4C8] font-medium">
+                                {project.difficulty}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-slate-500 dark:text-[#73809B]">
+                                <Clock className="w-3.5 h-3.5" />
+                                {project.estimatedHours}
+                              </span>
+                            </div>
+                            <h4 className="font-display text-lg font-bold text-slate-900 dark:text-white">
+                              {project.title}
+                            </h4>
+                          </div>
+
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5 ${
+                              isPassed
+                                ? 'bg-emerald-100 dark:bg-[#34D399]/15 text-emerald-700 dark:text-[#34D399]'
+                                : project.status === 'needs_revision'
+                                ? 'bg-amber-100 dark:bg-[#FBBF24]/15 text-amber-700 dark:text-[#FBBF24]'
+                                : 'bg-indigo-100 dark:bg-[#6D5DFB]/15 text-indigo-700 dark:text-[#A78BFA]'
+                            }`}
+                          >
+                            {isPassed ? (
+                              <>
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Approved ({project.score}%)</span>
+                              </>
+                            ) : project.status === 'needs_revision' ? (
+                              <span>Needs Revision ({project.score}%)</span>
+                            ) : (
+                              <span>Ready to Build</span>
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="text-sm text-slate-600 dark:text-[#AAB4C8] leading-relaxed">
+                          {project.brief}
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-4 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200/80 dark:border-[#273554] space-y-2">
+                            <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                              Deliverables to Complete
+                            </p>
+                            <ul className="space-y-1.5 text-xs text-slate-600 dark:text-[#AAB4C8]">
+                              {project.deliverables.map((d, dIdx) => (
+                                <li key={dIdx}>· {d}</li>
+                              ))}
+                            </ul>
+                          </div>
+
+                          <div className="p-4 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200/80 dark:border-[#273554] space-y-2">
+                            <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                              AI Acceptance Criteria
+                            </p>
+                            <ul className="space-y-1.5 text-xs text-slate-600 dark:text-[#AAB4C8]">
+                              {project.acceptanceCriteria.map((c, cIdx) => (
+                                <li key={cIdx}>· {c}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+
+                        {project.feedback && (
+                          <div
+                            className={`p-4 rounded-xl border space-y-2 text-xs ${
+                              isPassed
+                                ? 'bg-emerald-50 dark:bg-[#34D399]/10 border-emerald-200 dark:border-[#34D399]/30 text-emerald-900 dark:text-[#34D399]'
+                                : 'bg-amber-50 dark:bg-[#FBBF24]/10 border-amber-200 dark:border-[#FBBF24]/30 text-amber-900 dark:text-[#FBBF24]'
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
+                              <span>
+                                AI Project Review Score: {project.score}% · +{project.pointsAwarded} pts added to profile
+                              </span>
+                            </div>
+                            <p className="text-slate-700 dark:text-[#AAB4C8] leading-relaxed">
+                              {project.feedback}
+                            </p>
+                            {project.strengths && project.strengths.length > 0 && (
+                              <p className="text-slate-700 dark:text-slate-300">
+                                <span className="font-semibold">Strengths:</span> {project.strengths.join('; ')}
+                              </p>
+                            )}
+                            {project.improvements && project.improvements.length > 0 && (
+                              <p className="text-slate-700 dark:text-slate-300">
+                                <span className="font-semibold">Next polish:</span> {project.improvements.join('; ')}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {!isPassed && (
+                          <form
+                            onSubmit={(e) => void handleSubmitProject(e, project)}
+                            className="space-y-3 pt-2 border-t border-slate-200/80 dark:border-[#273554]"
+                          >
+                            <div className="space-y-1.5">
+                              <label
+                                htmlFor={`project-summary-${project.id}`}
+                                className="block text-xs font-semibold text-slate-700 dark:text-[#AAB4C8]"
+                              >
+                                Describe Your Completed Project and Solution
+                              </label>
+                              <textarea
+                                id={`project-summary-${project.id}`}
+                                rows={4}
+                                value={textVal}
+                                onChange={(e) =>
+                                  setProjectTexts((prev) => ({
+                                    ...prev,
+                                    [project.id]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Explain what you built, how you structured it, key decisions, and how each deliverable was completed…"
+                                className="w-full p-3.5 text-sm bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6D5DFB]/50"
+                              />
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                              <div className="relative flex-1">
+                                <Link2 className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                  type="url"
+                                  value={urlVal}
+                                  onChange={(e) =>
+                                    setProjectUrls((prev) => ({
+                                      ...prev,
+                                      [project.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Optional: GitHub repo, notebook, or live demo URL"
+                                  className="w-full pl-10 pr-3.5 py-2.5 text-xs bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] rounded-xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#6D5DFB]/50"
+                                />
+                              </div>
+
+                              <button
+                                type="submit"
+                                disabled={isSubmitting || textVal.trim().length < 20}
+                                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-45"
+                              >
+                                {isSubmitting ? (
+                                  <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>AI Reviewing…</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Send className="w-3.5 h-3.5" />
+                                    <span>
+                                      {project.status === 'needs_revision'
+                                        ? 'Resubmit Project for AI Review'
+                                        : 'Submit Project for AI Review'}
+                                    </span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

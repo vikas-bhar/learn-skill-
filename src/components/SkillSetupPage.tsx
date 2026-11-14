@@ -147,16 +147,17 @@ export const SkillSetupPage: React.FC<SkillSetupPageProps> = ({
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex flex-col">
       {/* Minimal Header */}
       <header className="border-b border-slate-200 dark:border-[#273554] bg-white/80 dark:bg-[#0B1020]/80 backdrop-blur-md">
-        <div className="max-w-[960px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-[960px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <SkillPathLogo />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {isDemoMode && (
-              <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-[#FBBF24]/15 border border-amber-200 dark:border-[#FBBF24]/30 text-[11px] font-semibold text-amber-800 dark:text-[#FBBF24]">
-                Demo Mode · No Sign-In
+              <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-[#FBBF24]/15 border border-amber-200 dark:border-[#FBBF24]/30 text-[11px] font-semibold text-amber-800 dark:text-[#FBBF24] whitespace-nowrap">
+                Demo Mode
               </span>
             )}
-            <span className="text-xs font-medium text-slate-500 dark:text-[#AAB4C8]">
-              Step 1 of 2 · Choose your learning goal
+            <span className="text-xs font-medium text-slate-500 dark:text-[#AAB4C8] whitespace-nowrap">
+              <span className="hidden sm:inline">Step 1 of 2 · Choose your learning goal</span>
+              <span className="sm:hidden">Step 1 of 2</span>
             </span>
           </div>
         </div>

@@ -15,6 +15,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import {
+  CapstoneProjectItem,
   DailyStudyMinutes,
   DiagnosticProfile,
   FinalExamResult,
@@ -46,6 +47,7 @@ export interface SavedLearningPath {
   latestSynthesis: VideoSynthesis | null;
   videoTestResults: VideoTestResult[];
   finalExam: FinalExamResult | null;
+  capstoneProjects: CapstoneProjectItem[];
   certificate: SkillCertificate | null;
   updatedAtMs: number;
 }
@@ -169,8 +171,55 @@ function sanitizeFinalExam(exam: FinalExamResult): FinalExamResult {
   };
 }
 
+function sanitizeCapstoneProjects(projects: CapstoneProjectItem[] | undefined): CapstoneProjectItem[] {
+  if (!Array.isArray(projects)) return [];
+  return projects.slice(0, 10).map((p, idx) => {
+    const clean: CapstoneProjectItem = {
+      id: sanitizeId(p.id, `p${idx + 1}`),
+      title: clampString(p.title, 180, `Capstone Project ${idx + 1}`),
+      difficulty:
+        p.difficulty === 'Beginner' || p.difficulty === 'Intermediate' || p.difficulty === 'Advanced'
+          ? p.difficulty
+          : 'Intermediate',
+      estimatedHours: clampString(p.estimatedHours, 40, '2 hours'),
+      brief: clampString(p.brief, 1500, ''),
+      deliverables: sanitizeStringArray(p.deliverables, 8, 240),
+      acceptanceCriteria: sanitizeStringArray(p.acceptanceCriteria, 8, 240),
+      status:
+        p.status === 'passed' || p.status === 'needs_revision' || p.status === 'pending'
+          ? p.status
+          : 'pending',
+    };
+    if (typeof p.submissionText === 'string' && p.submissionText.trim()) {
+      clean.submissionText = clampString(p.submissionText, 4000, '');
+    }
+    if (typeof p.submissionUrl === 'string' && p.submissionUrl.trim()) {
+      clean.submissionUrl = clampString(p.submissionUrl, 500, '');
+    }
+    if (typeof p.score === 'number' && Number.isFinite(p.score)) {
+      clean.score = clampInt(p.score, 0, 100, 0);
+    }
+    if (typeof p.pointsAwarded === 'number' && Number.isFinite(p.pointsAwarded)) {
+      clean.pointsAwarded = clampInt(p.pointsAwarded, 0, 1000, 0);
+    }
+    if (typeof p.feedback === 'string' && p.feedback.trim()) {
+      clean.feedback = clampString(p.feedback, 1500, '');
+    }
+    if (Array.isArray(p.strengths) && p.strengths.length > 0) {
+      clean.strengths = sanitizeStringArray(p.strengths, 6, 240);
+    }
+    if (Array.isArray(p.improvements) && p.improvements.length > 0) {
+      clean.improvements = sanitizeStringArray(p.improvements, 6, 240);
+    }
+    if (typeof p.completedAtIso === 'string' && p.completedAtIso.trim()) {
+      clean.completedAtIso = clampString(p.completedAtIso, 64, new Date().toISOString());
+    }
+    return clean;
+  });
+}
+
 function sanitizeCertificate(cert: SkillCertificate): SkillCertificate {
-  return {
+  const clean: SkillCertificate = {
     certificateId: sanitizeId(cert.certificateId, `SP-${Date.now()}`),
     learnerName: clampString(cert.learnerName, 120, 'Learner') || 'Learner',
     topic: clampString(cert.topic, 120, 'Skill Track') || 'Skill Track',
@@ -180,6 +229,10 @@ function sanitizeCertificate(cert: SkillCertificate): SkillCertificate {
     strengthSummary: clampString(cert.strengthSummary, 500, 'Demonstrated applied mastery across the full curriculum.'),
     issuedAtIso: clampString(cert.issuedAtIso, 64, new Date().toISOString()),
   };
+  if (typeof cert.projectsCompleted === 'number' && Number.isFinite(cert.projectsCompleted)) {
+    clean.projectsCompleted = clampInt(cert.projectsCompleted, 0, 20, 0);
+  }
+  return clean;
 }
 
 export async function ensureUserAccount(user: User): Promise<void> {
@@ -380,6 +433,7 @@ export async function saveNewLearningPath(
     bookmarkedIds: Record<string, boolean>;
     synthesis: VideoSynthesis | null;
     videoTestResults?: VideoTestResult[];
+    capstoneProjects?: CapstoneProjectItem[];
   }
 ): Promise<string> {
   const pathId = sanitizeId(`path_${Date.now()}`, `path_${Date.now()}`);
@@ -417,6 +471,7 @@ export async function saveNewLearningPath(
     studyPlan: sanitizeStudyPlan(params.skillTree.studyPlan),
     bookmarkedVideoIds,
     videoTestResults: sanitizeVideoTestResults(params.videoTestResults),
+    capstoneProjects: sanitizeCapstoneProjects(params.capstoneProjects),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -546,6 +601,27 @@ export async function saveFinalExamAndCertificate(
   }
 }
 
+export async function saveCapstoneProjectsAndCertificate(
+  userId: string,
+  pathId: string,
+  capstoneProjects: CapstoneProjectItem[],
+  certificate: SkillCertificate | null
+): Promise<void> {
+  const docPath = `users/${userId}/learningPaths/${pathId}`;
+  const updatePayload: Record<string, unknown> = {
+    capstoneProjects: sanitizeCapstoneProjects(capstoneProjects),
+    updatedAt: serverTimestamp(),
+  };
+  if (certificate) {
+    updatePayload.certificate = sanitizeCertificate(certificate);
+  }
+  try {
+    await updateDoc(doc(db, 'users', userId, 'learningPaths', pathId), updatePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, docPath);
+  }
+}
+
 export async function deleteLearningPathDoc(userId: string, pathId: string): Promise<void> {
   const docPath = `users/${userId}/learningPaths/${pathId}`;
   try {
@@ -611,6 +687,7 @@ export function subscribeUserLearningPaths(
           latestSynthesis: d.latestSynthesis ? (d.latestSynthesis as VideoSynthesis) : null,
           videoTestResults: Array.isArray(d.videoTestResults) ? (d.videoTestResults as VideoTestResult[]) : [],
           finalExam: d.finalExam ? (d.finalExam as FinalExamResult) : null,
+          capstoneProjects: Array.isArray(d.capstoneProjects) ? (d.capstoneProjects as CapstoneProjectItem[]) : [],
           certificate: d.certificate ? (d.certificate as SkillCertificate) : null,
           updatedAtMs: updatedAt,
         };

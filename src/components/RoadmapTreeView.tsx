@@ -20,6 +20,7 @@ import {
   SkillNode,
   SkillTreeData,
 } from '../types/learning';
+import { safeApiPost, toUserFriendlyError } from '../lib/errors';
 
 interface RoadmapTreeViewProps {
   skillTree: SkillTreeData;
@@ -334,16 +335,13 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
     setSelectedOption('');
     setCustomAnswer('');
     try {
-      const res = await fetch('/api/skill-tree/quiz', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: skillTree.topic, node: selectedNode }),
+      const data = await safeApiPost<MasteryQuestion>('/api/skill-tree/quiz', {
+        topic: skillTree.topic,
+        node: selectedNode,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not load mastery check.');
-      setQuiz(data as MasteryQuestion);
+      setQuiz(data);
     } catch (err) {
-      setQuizError(err instanceof Error ? err.message : 'Quiz error');
+      setQuizError(toUserFriendlyError(err, 'Could not load mastery check.'));
     } finally {
       setQuizLoading(false);
     }
@@ -358,22 +356,16 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
     setEvalLoading(true);
     setQuizError(null);
     try {
-      const res = await fetch('/api/skill-tree/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: skillTree.topic,
-          node: selectedNode,
-          question: quiz.question,
-          userAnswer: answerText,
-        }),
+      const data = await safeApiPost<MasteryEvaluation>('/api/skill-tree/evaluate', {
+        topic: skillTree.topic,
+        node: selectedNode,
+        question: quiz.question,
+        userAnswer: answerText,
       });
-      const data = (await res.json()) as MasteryEvaluation & { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Evaluation failed.');
       setEvaluation(data);
       onUpdateNodeStatus(selectedNode.id, data.passed);
     } catch (err) {
-      setQuizError(err instanceof Error ? err.message : 'Evaluation failed.');
+      setQuizError(toUserFriendlyError(err, 'Evaluation failed.'));
     } finally {
       setEvalLoading(false);
     }
@@ -651,7 +643,7 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
                 type="button"
                 onClick={() => setMobileSheetOpen(false)}
                 aria-label="Close module details"
-                className="p-2 rounded-lg text-slate-500 dark:text-[#AAB4C8]"
+                className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-xl text-slate-500 dark:text-[#AAB4C8] hover:bg-slate-100 dark:hover:bg-[#11182B] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>

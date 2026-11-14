@@ -179,6 +179,10 @@
           "type": "object",
           "description": "Optional map storing the latest comprehensive final AI exam result."
         },
+        "capstoneProjects": {
+          "type": "array",
+          "description": "Bounded list of up to 10 AI-assigned capstone projects and learner submission evaluations."
+        },
         "certificate": {
           "type": "object",
           "description": "Optional immutable map storing the earned certificate of mastery."

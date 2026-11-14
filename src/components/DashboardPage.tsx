@@ -12,7 +12,6 @@ import {
   ArrowRight,
   Clock,
   Award,
-  LogIn,
   LogOut,
   Cloud,
   Trash2,
@@ -22,12 +21,15 @@ import {
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { SavedLearningPath } from '../lib/learningStore';
+import { formatDemoSavedTime } from '../lib/demoStorage';
 import {
+  CapstoneProjectItem,
   DashboardTab,
   DiagnosticProfile,
   FinalExamEvaluation,
   FinalExamResult,
   LearnerScoreProfile,
+  ProjectEvaluationResponse,
   SkillCertificate,
   SkillNode,
   SkillTreeData,
@@ -38,6 +40,7 @@ import {
   VideoTestResult,
 } from '../types/learning';
 import { SkillPathLogo } from './SkillPathLogo';
+import { GoogleGIcon } from './GoogleGIcon';
 import { RoadmapTreeView } from './RoadmapTreeView';
 import { VideosView } from './VideosView';
 import { StudyNotesView } from './StudyNotesView';
@@ -64,9 +67,11 @@ interface DashboardPageProps {
   activePathId: string | null;
   isSavingPath: boolean;
   isDemoMode: boolean;
+  demoLastSavedAt: number | null;
   scoreProfile: LearnerScoreProfile;
   videoTestResults: VideoTestResult[];
   finalExam: FinalExamResult | null;
+  capstoneProjects: CapstoneProjectItem[];
   certificate: SkillCertificate | null;
   onSelectTab: (tab: DashboardTab) => void;
   onToggleTheme: () => void;
@@ -89,6 +94,12 @@ interface DashboardPageProps {
   ) => Promise<void>;
   onFinalExamEvaluated: (
     evaluation: FinalExamEvaluation,
+    learnerName: string
+  ) => Promise<void>;
+  onProjectsGenerated: (projects: CapstoneProjectItem[]) => Promise<void>;
+  onProjectEvaluated: (
+    updatedProjects: CapstoneProjectItem[],
+    evaluation: ProjectEvaluationResponse,
     learnerName: string
   ) => Promise<void>;
   onSignInAndSave: () => Promise<void>;
@@ -135,9 +146,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   activePathId,
   isSavingPath,
   isDemoMode,
+  demoLastSavedAt,
   scoreProfile,
   videoTestResults,
   finalExam,
+  capstoneProjects,
   certificate,
   onSelectTab,
   onToggleTheme,
@@ -155,6 +168,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onTogglePlanDay,
   onVideoTestCompleted,
   onFinalExamEvaluated,
+  onProjectsGenerated,
+  onProjectEvaluated,
   onSignInAndSave,
   onSignOut,
   onSaveCurrentPath,
@@ -216,7 +231,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex pb-20 lg:pb-0">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex pb-20 lg:pb-0 overflow-x-hidden">
       {/* Desktop Fixed Left Sidebar */}
       <aside className="hidden lg:flex lg:flex-col w-[264px] shrink-0 border-r border-slate-200 dark:border-[#273554] bg-white dark:bg-[#11182B] sticky top-0 h-screen">
         <div className="p-6 border-b border-slate-100 dark:border-[#273554]/80">
@@ -355,24 +370,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5">
-              <div className="px-2 flex items-center justify-between text-xs text-slate-600 dark:text-[#AAB4C8] tabular-nums">
-                <span>Session Score</span>
-                <span className="font-semibold text-slate-900 dark:text-white">{scoreProfile.totalScore} pts</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => void onSignInAndSave()}
-                disabled={!authReady || authLoading}
-                className="w-full py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {authLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <LogIn className="w-3.5 h-3.5" />
-                )}
-                <span>Sign in with Google</span>
-              </button>
+            <div className="px-2 pt-1 flex items-center justify-between text-xs text-slate-600 dark:text-[#AAB4C8] tabular-nums">
+              <span>Session Score</span>
+              <span className="font-semibold text-slate-900 dark:text-white">{scoreProfile.totalScore} pts</span>
             </div>
           )}
         </div>
@@ -382,12 +382,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Top Dashboard Header */}
         <header className="sticky top-0 z-20 border-b border-slate-200/80 dark:border-[#273554] bg-white/85 dark:bg-[#0B1020]/85 backdrop-blur-md">
-          <div className="max-w-[1200px] mx-auto px-5 md:px-8 h-16 md:h-20 flex items-center justify-between gap-4">
+          <div className="max-w-[1200px] mx-auto px-4 sm:px-5 md:px-8 h-16 md:h-20 flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={onGoHome}
-                className="lg:hidden cursor-pointer"
+                className="lg:hidden shrink-0 cursor-pointer"
                 aria-label="Back to home"
               >
                 <SkillPathLogo />
@@ -402,37 +402,38 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {skillTree && user && !activePathId && (
                 <button
                   type="button"
                   onClick={() => void onSaveCurrentPath()}
                   disabled={isSavingPath}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-2 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer disabled:opacity-50"
                 >
                   {isSavingPath ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Cloud className="w-3.5 h-3.5" />
                   )}
-                  <span>Save to Account</span>
+                  <span className="hidden sm:inline">Save to Account</span>
+                  <span className="sm:hidden">Save</span>
                 </button>
               )}
 
-              {authReady && !user && (
+              {authReady && !user && !isDemoMode && (
                 <button
                   type="button"
                   onClick={() => void onSignInAndSave()}
                   disabled={authLoading}
-                  className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-xs font-semibold text-slate-800 dark:text-white inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-2 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-xs font-semibold text-slate-800 dark:text-white inline-flex items-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-50"
                 >
                   {authLoading ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6D5DFB]" />
                   ) : (
-                    <LogIn className="w-3.5 h-3.5 text-[#4D8DFF]" />
+                    <GoogleGIcon className="w-4 h-4" />
                   )}
-                  <span className="hidden sm:inline">Sign in to Save</span>
-                  <span className="sm:hidden">Sign in</span>
+                  <span className="hidden sm:inline">Continue with Google</span>
+                  <span className="sm:hidden">Google</span>
                 </button>
               )}
 
@@ -441,7 +442,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   type="button"
                   onClick={() => void onSignOut()}
                   disabled={authLoading}
-                  className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-600 dark:text-[#AAB4C8]"
+                  className="lg:hidden min-w-[40px] min-h-[40px] p-2 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-600 dark:text-[#AAB4C8] flex items-center justify-center cursor-pointer"
                   aria-label="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -451,7 +452,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <button
                 type="button"
                 onClick={onStartNewSkill}
-                className="lg:hidden px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#17213A] text-xs font-semibold text-slate-800 dark:text-white"
+                className="lg:hidden px-2.5 sm:px-3 py-2 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-xs font-semibold text-slate-800 dark:text-white whitespace-nowrap cursor-pointer"
               >
                 New Skill
               </button>
@@ -460,7 +461,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 onClick={onToggleTheme}
                 aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                className="p-2.5 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] p-2 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white transition-colors flex items-center justify-center cursor-pointer"
               >
                 {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
               </button>
@@ -468,30 +469,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </header>
 
-        <main className="flex-1 max-w-[1200px] w-full mx-auto px-5 md:px-8 py-7 md:py-9">
+        <main className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-5 md:px-8 py-6 md:py-9">
           {isDemoMode && !user && (
-            <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <p className="text-xs font-semibold text-amber-900 dark:text-[#FBBF24]">
-                  Demo Mode Active (No Sign-In Required)
-                </p>
+            <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold text-amber-900 dark:text-[#FBBF24]">
+                    Demo Mode Active (No Sign-In Required)
+                  </p>
+                  <span className="text-[11px] font-medium text-amber-800/80 dark:text-[#AAB4C8] tabular-nums">
+                    · Last saved locally at {formatDemoSavedTime(demoLastSavedAt)}
+                  </span>
+                </div>
                 <p className="text-xs text-amber-800/90 dark:text-[#AAB4C8]">
-                  You are exploring interactively without signing in. Sign in with Google anytime to save real paths to your account.
+                  Your demo progress stays saved on this browser. Continue with Google anytime to sync tracks across devices.
                 </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => void onSignInAndSave()}
-                  disabled={authLoading}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] text-white text-xs font-semibold cursor-pointer"
+                  disabled={!authReady || authLoading}
+                  className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-slate-900 dark:text-white text-xs font-semibold inline-flex items-center gap-2 whitespace-nowrap cursor-pointer disabled:opacity-50"
                 >
-                  Sign in with Google
+                  {authLoading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6D5DFB]" />
+                  ) : (
+                    <GoogleGIcon className="w-4 h-4" />
+                  )}
+                  <span>Continue with Google</span>
                 </button>
                 <button
                   type="button"
                   onClick={onExitDemo}
-                  className="px-3 py-2 rounded-xl bg-white dark:bg-[#17213A] border border-amber-200 dark:border-[#273554] text-xs font-semibold text-slate-700 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                  className="px-3 py-2 rounded-xl bg-white/80 dark:bg-[#11182B] border border-amber-200 dark:border-[#273554] text-xs font-semibold text-slate-700 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white whitespace-nowrap cursor-pointer"
                 >
                   Exit Demo
                 </button>
@@ -640,12 +651,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <div className="p-5 rounded-2xl bg-gradient-to-r from-[#6D5DFB]/15 to-[#4D8DFF]/15 border border-[#6D5DFB]/40 flex flex-wrap items-center justify-between gap-4">
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
-                      {certificate ? 'Certificate of Mastery Earned' : 'Final AI Certification Exam Unlocked'}
+                      {certificate
+                        ? 'Certificate of Mastery Earned'
+                        : finalExam?.passed
+                        ? 'Final Exam Passed - Complete Assigned Projects'
+                        : 'Final AI Exam and Capstone Projects Unlocked'}
                     </p>
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">
                       {certificate
                         ? `You earned your verified ${skillTree.topic} Certificate with a ${certificate.finalScore}% Final AI Exam score.`
-                        : `All ${totalCount} modules in ${skillTree.topic} are complete. Take the Final AI Exam to earn your certificate.`}
+                        : finalExam?.passed
+                        ? `Complete your assigned ${skillTree.topic} capstone projects to unlock your Certificate of Mastery.`
+                        : `All ${totalCount} modules in ${skillTree.topic} are complete. Pass the Final AI Exam and complete your assigned projects to earn your certificate.`}
                     </p>
                   </div>
                   <button
@@ -654,7 +671,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <Award className="w-4 h-4" />
-                    <span>{certificate ? 'View Certificate' : 'Take Final AI Exam'}</span>
+                    <span>
+                      {certificate
+                        ? 'View Certificate'
+                        : finalExam?.passed
+                        ? 'Complete Projects'
+                        : 'Open Final Exam and Projects'}
+                    </span>
                   </button>
                 </div>
               )}
@@ -847,12 +870,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               scoreProfile={scoreProfile}
               videoTestResults={videoTestResults}
               finalExam={finalExam}
+              capstoneProjects={capstoneProjects}
               certificate={certificate}
               defaultLearnerName={user?.displayName || (isDemoMode ? 'Demo Explorer' : 'Learner')}
               isDemoMode={isDemoMode}
               onGoToRoadmap={() => onSelectTab('roadmap')}
               onGoToVideos={() => onSelectTab('videos')}
               onFinalExamEvaluated={onFinalExamEvaluated}
+              onProjectsGenerated={onProjectsGenerated}
+              onProjectEvaluated={onProjectEvaluated}
             />
           )}
         </main>
@@ -861,7 +887,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Mobile Sticky Bottom Navigation Bar */}
       <nav
         aria-label="Mobile navigation"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-slate-200 dark:border-[#273554] bg-white/95 dark:bg-[#11182B]/95 backdrop-blur-md px-2 py-1.5 flex items-center justify-around"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-slate-200 dark:border-[#273554] bg-white/95 dark:bg-[#11182B]/95 backdrop-blur-md px-1.5 py-1.5 flex items-center justify-between"
       >
         {NAV_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -871,14 +897,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               key={tab.id}
               type="button"
               onClick={() => onSelectTab(tab.id)}
-              className={`min-h-[44px] min-w-[56px] px-2 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors ${
+              className={`flex-1 min-h-[44px] min-w-[44px] px-1 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
                 active
                   ? 'text-[#6D5DFB] dark:text-[#A78BFA]'
                   : 'text-slate-500 dark:text-[#73809B]'
               }`}
             >
               <Icon className="w-4 h-4" />
-              <span>{tab.mobileLabel}</span>
+              <span className="truncate max-w-full">{tab.mobileLabel}</span>
             </button>
           );
         })}

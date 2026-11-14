@@ -12,6 +12,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { SkillNode, VideoSynthesis } from '../types/learning';
+import { copyTextToClipboard } from '../lib/clipboard';
+import { toUserFriendlyError } from '../lib/errors';
+import { useToast } from '../context/ToastContext';
 
 interface StudyNotesViewProps {
   nodes: SkillNode[];
@@ -32,6 +35,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   onSelectNode,
   onRegenerateNotes,
 }) => {
+  const { showToast } = useToast();
   const diagramBaseId = useId().replace(/:/g, '');
   const [mermaidSvg, setMermaidSvg] = useState('');
   const [mermaidErr, setMermaidErr] = useState<string | null>(null);
@@ -70,7 +74,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
         if (!cancelled) setMermaidSvg(svg);
       } catch (err) {
         if (!cancelled) {
-          setMermaidErr(err instanceof Error ? err.message : 'Unable to render diagram.');
+          setMermaidErr(toUserFriendlyError(err, 'Unable to render diagram.'));
           setMermaidSvg('');
         }
       }
@@ -120,9 +124,14 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   const handleCopy = async () => {
     const md = buildMarkdown();
     if (!md) return;
-    await navigator.clipboard.writeText(md);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
+    const ok = await copyTextToClipboard(md);
+    if (ok) {
+      setCopied(true);
+      showToast('Study notes copied to clipboard.', 'success');
+      setTimeout(() => setCopied(false), 1800);
+    } else {
+      showToast('Clipboard access is blocked here. Try downloading your notes instead.', 'error');
+    }
   };
 
   const handleDownload = () => {

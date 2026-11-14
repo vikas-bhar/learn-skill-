@@ -20,6 +20,7 @@ import {
   VideoSynthesis,
   VideoTestResult,
 } from '../types/learning';
+import { safeApiPost, toUserFriendlyError } from '../lib/errors';
 
 interface VideosViewProps {
   topic: string;
@@ -89,17 +90,11 @@ export const VideosView: React.FC<VideosViewProps> = ({
       setIsSearching(true);
       setError(null);
       try {
-        const res = await fetch('/api/videos/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: searchTerm.trim(),
-            skillTitle: activeNode?.title || '',
-            topic,
-          }),
+        const data = await safeApiPost<{ videos?: VideoResult[] }>('/api/videos/search', {
+          query: searchTerm.trim(),
+          skillTitle: activeNode?.title || '',
+          topic,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Could not load video recommendations.');
         const list = (data.videos || []) as VideoResult[];
         if (list.length === 0) {
           setError('No embeddable videos found for that query. Try a broader term or paste a YouTube URL.');
@@ -109,9 +104,10 @@ export const VideosView: React.FC<VideosViewProps> = ({
         }
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : 'We could not load recommendations right now. Please try again shortly.'
+          toUserFriendlyError(
+            err,
+            'We could not load recommendations right now. Please try again shortly.'
+          )
         );
       } finally {
         setIsSearching(false);
@@ -153,24 +149,18 @@ export const VideosView: React.FC<VideosViewProps> = ({
           ? synthesis.executiveSummary
           : notesContext.trim();
 
-      const res = await fetch('/api/videos/quiz', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: selectedVideo.videoId,
-          videoTitle: selectedVideo.title,
-          channelTitle: selectedVideo.channelTitle,
-          topic,
-          skillTitle: activeNode?.title || topic,
-          learningObjectives: activeNode?.learningObjectives || [],
-          synthesisSummary: summaryContext,
-        }),
+      const data = await safeApiPost<VideoQuizPayload>('/api/videos/quiz', {
+        videoId: selectedVideo.videoId,
+        videoTitle: selectedVideo.title,
+        channelTitle: selectedVideo.channelTitle,
+        topic,
+        skillTitle: activeNode?.title || topic,
+        learningObjectives: activeNode?.learningObjectives || [],
+        synthesisSummary: summaryContext,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not generate post-video test.');
-      setQuizPayload(data as VideoQuizPayload);
+      setQuizPayload(data);
     } catch (err) {
-      setQuizError(err instanceof Error ? err.message : 'Unable to start post-video test.');
+      setQuizError(toUserFriendlyError(err, 'Unable to start post-video test.'));
     } finally {
       setQuizLoading(false);
     }
@@ -199,25 +189,19 @@ export const VideosView: React.FC<VideosViewProps> = ({
         };
       });
 
-      const res = await fetch('/api/videos/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: selectedVideo.videoId,
-          videoTitle: selectedVideo.title,
-          topic,
-          skillTitle: activeNode?.title || topic,
-          questions: quizPayload.questions,
-          userAnswers,
-        }),
+      const data = await safeApiPost<VideoQuizEvaluation>('/api/videos/evaluate', {
+        videoId: selectedVideo.videoId,
+        videoTitle: selectedVideo.title,
+        topic,
+        skillTitle: activeNode?.title || topic,
+        questions: quizPayload.questions,
+        userAnswers,
       });
-      const data = (await res.json()) as VideoQuizEvaluation & { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Failed to score test.');
 
       setLatestEvaluation(data);
       await onVideoTestCompleted(selectedVideo, activeNode, data);
     } catch (err) {
-      setQuizError(err instanceof Error ? err.message : 'Scoring failed.');
+      setQuizError(toUserFriendlyError(err, 'Failed to score post-video test.'));
     } finally {
       setEvalLoading(false);
     }

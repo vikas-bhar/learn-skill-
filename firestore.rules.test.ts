@@ -143,6 +143,7 @@ const requiredGuards = [
   'existing().userId == request.auth.uid',
   'affectedKeys().hasOnly(',
   "!existing().keys().hasAny(['certificate'])",
+  'data.capstoneProjects.size() <= 10',
 ];
 
 const missing = requiredGuards.filter((g) => !rulesText.includes(g));

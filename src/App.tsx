@@ -1,13 +1,17 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { SkillSetupPage } from './components/SkillSetupPage';
 import { DiagnosticAssessmentPage } from './components/DiagnosticAssessmentPage';
 import { DashboardPage } from './components/DashboardPage';
+import { NotFoundPage } from './components/NotFoundPage';
 import { useFirebase } from './context/FirebaseContext';
 import { formatFirebaseUserError } from './lib/firebase';
+import { clearDemoState, loadDemoState, saveDemoState } from './lib/demoStorage';
+import { safeApiPost, toUserFriendlyError } from './lib/errors';
 import {
   deleteLearningPathDoc,
   addProfileScore,
+  saveCapstoneProjectsAndCertificate,
   SavedLearningPath,
   saveFinalExamAndCertificate,
   saveNewLearningPath,
@@ -26,6 +30,7 @@ import {
 } from './data/demoJourney';
 import {
   AppScreen,
+  CapstoneProjectItem,
   DailyStudyMinutes,
   DashboardTab,
   DiagnosticMessage,
@@ -34,6 +39,7 @@ import {
   FinalExamResult,
   LearnerScoreProfile,
   LearningPace,
+  ProjectEvaluationResponse,
   SkillCertificate,
   SkillNode,
   SkillTreeData,
@@ -60,6 +66,11 @@ function nowLabel(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function isKnownAppPath(pathname: string): boolean {
+  const normalized = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
+  return normalized === '/' || normalized === '/index.html';
+}
+
 export default function App() {
   const {
     user,
@@ -75,38 +86,88 @@ export default function App() {
     clearAuthError,
   } = useFirebase();
 
-  const [screen, setScreen] = useState<AppScreen>('landing');
-  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
+  const initialDemoRef = useRef(loadDemoState());
+  const restoredDemo = initialDemoRef.current;
+
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+  const [screen, setScreen] = useState<AppScreen>(() =>
+    restoredDemo ? restoredDemo.screen : 'landing'
+  );
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>(() =>
+    restoredDemo ? restoredDemo.dashboardTab : 'overview'
+  );
   const [isDark, setIsDark] = useState(true);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(() => Boolean(restoredDemo));
+  const [demoLastSavedAt, setDemoLastSavedAt] = useState<number | null>(() =>
+    restoredDemo ? restoredDemo.lastSavedAt : null
+  );
   const [isSavingPath, setIsSavingPath] = useState(false);
 
-  const [localScoreProfile, setLocalScoreProfile] = useState<LearnerScoreProfile>({
-    totalScore: 0,
-    testsCompleted: 0,
-    videosCompleted: 0,
-    certificatesEarned: 0,
-  });
+  const [localScoreProfile, setLocalScoreProfile] = useState<LearnerScoreProfile>(() =>
+    restoredDemo
+      ? restoredDemo.scoreProfile
+      : {
+          totalScore: 0,
+          testsCompleted: 0,
+          videosCompleted: 0,
+          certificatesEarned: 0,
+        }
+  );
 
-  const [profile, setProfile] = useState<DiagnosticProfile>(INITIAL_PROFILE);
-  const [messages, setMessages] = useState<DiagnosticMessage[]>([]);
+  const [profile, setProfile] = useState<DiagnosticProfile>(() =>
+    restoredDemo ? restoredDemo.profile : INITIAL_PROFILE
+  );
+  const [messages, setMessages] = useState<DiagnosticMessage[]>(() =>
+    restoredDemo ? restoredDemo.messages : []
+  );
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagError, setDiagError] = useState<string | null>(null);
 
-  const [skillTree, setSkillTree] = useState<SkillTreeData | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [skillTree, setSkillTree] = useState<SkillTreeData | null>(() =>
+    restoredDemo ? restoredDemo.skillTree : null
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() =>
+    restoredDemo ? restoredDemo.selectedNodeId : null
+  );
   const [treeLoading, setTreeLoading] = useState(false);
 
-  const [videos, setVideos] = useState<VideoResult[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<VideoResult | null>(null);
-  const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({});
-  const [synthesis, setSynthesis] = useState<VideoSynthesis | null>(null);
+  const [videos, setVideos] = useState<VideoResult[]>(() =>
+    restoredDemo ? restoredDemo.videos : []
+  );
+  const [selectedVideo, setSelectedVideo] = useState<VideoResult | null>(() =>
+    restoredDemo ? restoredDemo.selectedVideo : null
+  );
+  const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>(() =>
+    restoredDemo ? restoredDemo.bookmarkedIds : {}
+  );
+  const [synthesis, setSynthesis] = useState<VideoSynthesis | null>(() =>
+    restoredDemo ? restoredDemo.synthesis : null
+  );
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [videoTestResults, setVideoTestResults] = useState<VideoTestResult[]>([]);
-  const [finalExam, setFinalExam] = useState<FinalExamResult | null>(null);
-  const [certificate, setCertificate] = useState<SkillCertificate | null>(null);
+  const [videoTestResults, setVideoTestResults] = useState<VideoTestResult[]>(() =>
+    restoredDemo ? restoredDemo.videoTestResults : []
+  );
+  const [finalExam, setFinalExam] = useState<FinalExamResult | null>(() =>
+    restoredDemo ? restoredDemo.finalExam : null
+  );
+  const [capstoneProjects, setCapstoneProjects] = useState<CapstoneProjectItem[]>(() =>
+    restoredDemo ? restoredDemo.capstoneProjects : []
+  );
+  const [certificate, setCertificate] = useState<SkillCertificate | null>(() =>
+    restoredDemo ? restoredDemo.certificate : null
+  );
 
   const activeScoreProfile = user ? cloudScoreProfile : localScoreProfile;
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -122,6 +183,51 @@ export default function App() {
       setIsDemoMode(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!isDemoMode || user) return;
+    if (screen === 'landing') return;
+    if (screen === 'setup' && !profile.topic.trim() && !skillTree) return;
+
+    const savedAt = saveDemoState({
+      screen,
+      dashboardTab,
+      profile,
+      messages,
+      skillTree,
+      selectedNodeId,
+      videos,
+      selectedVideo,
+      bookmarkedIds,
+      synthesis,
+      videoTestResults,
+      finalExam,
+      capstoneProjects,
+      certificate,
+      scoreProfile: localScoreProfile,
+    });
+    if (savedAt) {
+      setDemoLastSavedAt(savedAt);
+    }
+  }, [
+    isDemoMode,
+    user,
+    screen,
+    dashboardTab,
+    profile,
+    messages,
+    skillTree,
+    selectedNodeId,
+    videos,
+    selectedVideo,
+    bookmarkedIds,
+    synthesis,
+    videoTestResults,
+    finalExam,
+    capstoneProjects,
+    certificate,
+    localScoreProfile,
+  ]);
 
   const handleToggleTheme = () => setIsDark((prev) => !prev);
 
@@ -146,6 +252,7 @@ export default function App() {
       setSynthesis(saved.latestSynthesis);
       setVideoTestResults(saved.videoTestResults || []);
       setFinalExam(saved.finalExam || null);
+      setCapstoneProjects(saved.capstoneProjects || []);
       setCertificate(saved.certificate || null);
       setActivePathId(saved.id);
       setIsDemoMode(false);
@@ -169,6 +276,7 @@ export default function App() {
     setSynthesis(DEMO_SYNTHESIS);
     setVideoTestResults([]);
     setFinalExam(null);
+    setCapstoneProjects([]);
     setCertificate(null);
     setLocalScoreProfile({
       totalScore: 0,
@@ -200,6 +308,8 @@ export default function App() {
   };
 
   const handleExitDemo = () => {
+    clearDemoState();
+    setDemoLastSavedAt(null);
     setIsDemoMode(false);
     setActivePathId(null);
     setProfile(INITIAL_PROFILE);
@@ -212,6 +322,7 @@ export default function App() {
     setSynthesis(null);
     setVideoTestResults([]);
     setFinalExam(null);
+    setCapstoneProjects([]);
     setCertificate(null);
     setLocalScoreProfile({
       totalScore: 0,
@@ -221,6 +332,33 @@ export default function App() {
     });
     setDiagError(null);
     setScreen('landing');
+  };
+
+  const handleStartNewSkill = () => {
+    if (isDemoMode && !user) {
+      clearDemoState();
+      setDemoLastSavedAt(null);
+      setProfile(INITIAL_PROFILE);
+      setMessages([]);
+      setSkillTree(null);
+      setSelectedNodeId(null);
+      setVideos([]);
+      setSelectedVideo(null);
+      setBookmarkedIds({});
+      setSynthesis(null);
+      setVideoTestResults([]);
+      setFinalExam(null);
+      setCapstoneProjects([]);
+      setCertificate(null);
+      setLocalScoreProfile({
+        totalScore: 0,
+        testsCompleted: 0,
+        videosCompleted: 0,
+        certificatesEarned: 0,
+      });
+    }
+    setDiagError(null);
+    setScreen('setup');
   };
 
   const handleCompleteSetup = async (config: {
@@ -252,25 +390,25 @@ export default function App() {
     setSynthesis(null);
     setVideoTestResults([]);
     setFinalExam(null);
+    setCapstoneProjects([]);
     setCertificate(null);
     setDiagError(null);
     setScreen('diagnostic');
 
     setDiagLoading(true);
     try {
-      const res = await fetch('/api/diagnostic/turn', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: config.topic,
-          goal: config.goal,
-          history: [],
-          userMessage: '',
-          currentProfile: freshProfile,
-        }),
+      const data = await safeApiPost<{
+        reply: string;
+        suggestedReplies?: string[];
+        assessment?: DiagnosticMessage['assessment'];
+        updatedProfile: Partial<DiagnosticProfile>;
+      }>('/api/diagnostic/turn', {
+        topic: config.topic,
+        goal: config.goal,
+        history: [],
+        userMessage: '',
+        currentProfile: freshProfile,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to start knowledge check.');
 
       setProfile((prev) => ({
         ...prev,
@@ -289,7 +427,7 @@ export default function App() {
         },
       ]);
     } catch (err) {
-      setDiagError(err instanceof Error ? err.message : 'Unable to start knowledge check.');
+      setDiagError(toUserFriendlyError(err, 'Unable to start knowledge check.'));
     } finally {
       setDiagLoading(false);
     }
@@ -304,22 +442,14 @@ export default function App() {
       setTreeLoading(true);
       setDiagError(null);
       try {
-        const res = await fetch('/api/skill-tree/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            topic: activeProfile.topic,
-            goal: activeProfile.goal,
-            pace: activeProfile.pace,
-            dailyMinutes: activeProfile.dailyMinutes,
-            profile: activeProfile,
-            history: activeMessages.map((m) => ({ role: m.role, content: m.content })),
-          }),
+        const tree = await safeApiPost<SkillTreeData>('/api/skill-tree/generate', {
+          topic: activeProfile.topic,
+          goal: activeProfile.goal,
+          pace: activeProfile.pace,
+          dailyMinutes: activeProfile.dailyMinutes,
+          profile: activeProfile,
+          history: activeMessages.map((m) => ({ role: m.role, content: m.content })),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to build your learning path.');
-
-        const tree = data as SkillTreeData;
         const initialNodeId = tree.recommendedNextId || tree.nodes[0]?.id || null;
         setSkillTree(tree);
         setSelectedNodeId(initialNodeId);
@@ -343,7 +473,7 @@ export default function App() {
           setActivePathId(null);
         }
       } catch (err) {
-        setDiagError(err instanceof Error ? err.message : 'Failed to build skill tree.');
+        setDiagError(toUserFriendlyError(err, 'Failed to build your learning path.'));
       } finally {
         setTreeLoading(false);
       }
@@ -364,19 +494,18 @@ export default function App() {
     setDiagError(null);
 
     try {
-      const res = await fetch('/api/diagnostic/turn', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          topic: profile.topic,
-          goal: profile.goal,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
-          userMessage: userText,
-          currentProfile: profile,
-        }),
+      const data = await safeApiPost<{
+        reply: string;
+        suggestedReplies?: string[];
+        assessment?: DiagnosticMessage['assessment'];
+        updatedProfile: Partial<DiagnosticProfile>;
+      }>('/api/diagnostic/turn', {
+        topic: profile.topic,
+        goal: profile.goal,
+        history: messages.map((m) => ({ role: m.role, content: m.content })),
+        userMessage: userText,
+        currentProfile: profile,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Diagnostic evaluation failed.');
 
       const updatedProfile: DiagnosticProfile = {
         ...profile,
@@ -402,7 +531,7 @@ export default function App() {
         await handleGenerateSkillTree(completeHistory, updatedProfile);
       }
     } catch (err) {
-      setDiagError(err instanceof Error ? err.message : 'Failed to process answer.');
+      setDiagError(toUserFriendlyError(err, 'Failed to process answer.'));
     } finally {
       setDiagLoading(false);
     }
@@ -421,15 +550,27 @@ export default function App() {
           bookmarkedIds,
           synthesis,
           videoTestResults,
+          capstoneProjects,
         });
         setActivePathId(newId);
+        clearDemoState();
+        setDemoLastSavedAt(null);
       } catch (err) {
         setDiagError(formatFirebaseUserError(err));
       } finally {
         setIsSavingPath(false);
       }
     },
-    [skillTree, profile, selectedNodeId, bookmarkedIds, synthesis, videoTestResults, setActivePathId]
+    [
+      skillTree,
+      profile,
+      selectedNodeId,
+      bookmarkedIds,
+      synthesis,
+      videoTestResults,
+      capstoneProjects,
+      setActivePathId,
+    ]
   );
 
   const handleSaveCurrentPath = async () => {
@@ -504,21 +645,14 @@ export default function App() {
     setDiagError(null);
     const activeNode = skillTree?.nodes.find((n) => n.id === selectedNodeId) || null;
     try {
-      const res = await fetch('/api/videos/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: video.videoId,
-          videoTitle: video.title,
-          channelTitle: video.channelTitle,
-          topic: skillTree?.topic || profile.topic,
-          skillTitle: activeNode?.title || video.title,
-          userNotesOrTranscript: transcriptContext,
-        }),
+      const nextSynthesis = await safeApiPost<VideoSynthesis>('/api/videos/summarize', {
+        videoId: video.videoId,
+        videoTitle: video.title,
+        channelTitle: video.channelTitle,
+        topic: skillTree?.topic || profile.topic,
+        skillTitle: activeNode?.title || video.title,
+        userNotesOrTranscript: transcriptContext,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not synthesize study notes.');
-      const nextSynthesis = data as VideoSynthesis;
       setSynthesis(nextSynthesis);
       setDashboardTab('notes');
 
@@ -530,7 +664,7 @@ export default function App() {
         }
       }
     } catch (err) {
-      setDiagError(err instanceof Error ? err.message : 'Failed to synthesize notes.');
+      setDiagError(toUserFriendlyError(err, 'Could not synthesize study notes.'));
     } finally {
       setIsSummarizing(false);
     }
@@ -540,21 +674,14 @@ export default function App() {
     setIsSummarizing(true);
     setDiagError(null);
     try {
-      const res = await fetch('/api/videos/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: selectedVideo?.videoId || `node_${node.id}`,
-          videoTitle: selectedVideo?.title || node.title,
-          channelTitle: selectedVideo?.channelTitle || 'SkillPath Curriculum',
-          topic: skillTree?.topic || profile.topic,
-          skillTitle: node.title,
-          userNotesOrTranscript: `Objectives: ${node.learningObjectives.join('; ')}. Summary: ${node.summary}`,
-        }),
+      const nextSynthesis = await safeApiPost<VideoSynthesis>('/api/videos/summarize', {
+        videoId: selectedVideo?.videoId || `node_${node.id}`,
+        videoTitle: selectedVideo?.title || node.title,
+        channelTitle: selectedVideo?.channelTitle || 'SkillPath Curriculum',
+        topic: skillTree?.topic || profile.topic,
+        skillTitle: node.title,
+        userNotesOrTranscript: `Objectives: ${node.learningObjectives.join('; ')}. Summary: ${node.summary}`,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not generate notes.');
-      const nextSynthesis = data as VideoSynthesis;
       setSynthesis(nextSynthesis);
 
       if (user && activePathId) {
@@ -565,7 +692,7 @@ export default function App() {
         }
       }
     } catch (err) {
-      setDiagError(err instanceof Error ? err.message : 'Note generation failed.');
+      setDiagError(toUserFriendlyError(err, 'Could not generate study notes.'));
     } finally {
       setIsSummarizing(false);
     }
@@ -675,7 +802,13 @@ export default function App() {
     setFinalExam(examRecord);
 
     const updatedTotalScore = activeScoreProfile.totalScore + evaluation.pointsAwarded;
-    const isNewCertificate = evaluation.passed && !certificate;
+    const allModulesDone =
+      skillTree.nodes.length > 0 && skillTree.nodes.every((n) => n.status === 'mastered');
+    const allProjectsDone =
+      capstoneProjects.length > 0 && capstoneProjects.every((p) => p.status === 'passed');
+    const isNewCertificate =
+      evaluation.passed && allModulesDone && allProjectsDone && !certificate;
+
     const issuedCertificate: SkillCertificate | null = isNewCertificate
       ? {
           certificateId: `SP-${Date.now().toString(36).toUpperCase()}`,
@@ -683,6 +816,7 @@ export default function App() {
           topic: skillTree.topic,
           finalScore: evaluation.score,
           totalScore: updatedTotalScore,
+          projectsCompleted: capstoneProjects.filter((p) => p.status === 'passed').length,
           level: profile.estimatedLevel,
           strengthSummary: evaluation.strengthSummary,
           issuedAtIso: examRecord.completedAtIso,
@@ -721,6 +855,108 @@ export default function App() {
       }));
     }
   };
+
+  const handleProjectsGenerated = async (projects: CapstoneProjectItem[]) => {
+    setCapstoneProjects(projects);
+    if (user && activePathId) {
+      try {
+        await saveCapstoneProjectsAndCertificate(user.uid, activePathId, projects, null);
+      } catch (err) {
+        setDiagError(formatFirebaseUserError(err));
+      }
+    }
+  };
+
+  const handleProjectEvaluated = async (
+    updatedProjects: CapstoneProjectItem[],
+    evaluation: ProjectEvaluationResponse,
+    learnerName: string
+  ) => {
+    if (!skillTree) return;
+    setCapstoneProjects(updatedProjects);
+
+    const updatedTotalScore = activeScoreProfile.totalScore + evaluation.pointsAwarded;
+    const allModulesDone =
+      skillTree.nodes.length > 0 && skillTree.nodes.every((n) => n.status === 'mastered');
+    const allProjectsDone =
+      updatedProjects.length > 0 && updatedProjects.every((p) => p.status === 'passed');
+    const isNewCertificate =
+      Boolean(finalExam?.passed) && allModulesDone && allProjectsDone && !certificate;
+
+    const issuedCertificate: SkillCertificate | null = isNewCertificate
+      ? {
+          certificateId: `SP-${Date.now().toString(36).toUpperCase()}`,
+          learnerName,
+          topic: skillTree.topic,
+          finalScore: finalExam?.score ?? evaluation.score,
+          totalScore: updatedTotalScore,
+          projectsCompleted: updatedProjects.filter((p) => p.status === 'passed').length,
+          level: profile.estimatedLevel,
+          strengthSummary:
+            finalExam?.strengthSummary ||
+            `Completed all curriculum modules, Final AI Exam, and applied capstone projects in ${skillTree.topic}.`,
+          issuedAtIso: evaluation.completedAtIso || new Date().toISOString(),
+        }
+      : certificate;
+
+    if (issuedCertificate && isNewCertificate) {
+      setCertificate(issuedCertificate);
+    }
+
+    if (user) {
+      try {
+        await addProfileScore(user.uid, {
+          scoreDelta: evaluation.pointsAwarded,
+          testsDelta: 1,
+          videosDelta: 0,
+          certificatesDelta: isNewCertificate ? 1 : 0,
+        });
+        if (activePathId) {
+          await saveCapstoneProjectsAndCertificate(
+            user.uid,
+            activePathId,
+            updatedProjects,
+            isNewCertificate ? issuedCertificate : null
+          );
+        }
+      } catch (err) {
+        setDiagError(formatFirebaseUserError(err));
+      }
+    } else {
+      setLocalScoreProfile((prev) => ({
+        ...prev,
+        totalScore: prev.totalScore + evaluation.pointsAwarded,
+        testsCompleted: prev.testsCompleted + 1,
+        certificatesEarned: prev.certificatesEarned + (isNewCertificate ? 1 : 0),
+      }));
+    }
+  };
+
+  const navigateHome = () => {
+    if (typeof window !== 'undefined' && !isKnownAppPath(window.location.pathname)) {
+      window.history.pushState({}, '', '/');
+      setCurrentPath('/');
+    }
+    setScreen('landing');
+  };
+
+  if (!isKnownAppPath(currentPath)) {
+    return (
+      <NotFoundPage
+        isDark={isDark}
+        badPath={currentPath}
+        onToggleTheme={handleToggleTheme}
+        onGoHome={navigateHome}
+        onTryDemo={() => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/');
+            setCurrentPath('/');
+          }
+          handleLaunchDemo();
+        }}
+      />
+    );
+  }
 
   if (screen === 'landing') {
     return (
@@ -800,13 +1036,15 @@ export default function App() {
       activePathId={activePathId}
       isSavingPath={isSavingPath}
       isDemoMode={isDemoMode && !user}
+      demoLastSavedAt={demoLastSavedAt}
       scoreProfile={activeScoreProfile}
       videoTestResults={videoTestResults}
       finalExam={finalExam}
+      capstoneProjects={capstoneProjects}
       certificate={certificate}
       onSelectTab={setDashboardTab}
       onToggleTheme={handleToggleTheme}
-      onStartNewSkill={() => setScreen('setup')}
+      onStartNewSkill={handleStartNewSkill}
       onGoToDiagnostic={() => setScreen('setup')}
       onGoHome={() => setScreen('landing')}
       onExitDemo={handleExitDemo}
@@ -820,6 +1058,8 @@ export default function App() {
       onTogglePlanDay={handleTogglePlanDay}
       onVideoTestCompleted={handleVideoTestCompleted}
       onFinalExamEvaluated={handleFinalExamEvaluated}
+      onProjectsGenerated={handleProjectsGenerated}
+      onProjectEvaluated={handleProjectEvaluated}
       onSignInAndSave={handleSignInAndSave}
       onSignOut={async () => {
         await signOutUser();

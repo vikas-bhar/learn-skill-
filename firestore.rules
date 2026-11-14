@@ -113,12 +113,13 @@ service cloud.firestore {
     function isValidCertificateMap(cert) {
       return cert is map &&
         cert.keys().hasAll(['certificateId', 'learnerName', 'topic', 'finalScore', 'totalScore', 'level', 'strengthSummary', 'issuedAtIso']) &&
-        cert.keys().hasOnly(['certificateId', 'learnerName', 'topic', 'finalScore', 'totalScore', 'level', 'strengthSummary', 'issuedAtIso']) &&
+        cert.keys().hasOnly(['certificateId', 'learnerName', 'topic', 'finalScore', 'totalScore', 'projectsCompleted', 'level', 'strengthSummary', 'issuedAtIso']) &&
         isValidId(cert.certificateId) &&
         cert.learnerName is string && cert.learnerName.size() >= 1 && cert.learnerName.size() <= 120 &&
         cert.topic is string && cert.topic.size() >= 1 && cert.topic.size() <= 120 &&
         cert.finalScore is int && cert.finalScore >= 0 && cert.finalScore <= 100 &&
         cert.totalScore is int && cert.totalScore >= 0 && cert.totalScore <= 1000000 &&
+        (!cert.keys().hasAny(['projectsCompleted']) || (cert.projectsCompleted is int && cert.projectsCompleted >= 0 && cert.projectsCompleted <= 20)) &&
         cert.level in ['Unassessed', 'Beginner', 'Intermediate', 'Advanced'] &&
         cert.strengthSummary is string && cert.strengthSummary.size() <= 500 &&
         cert.issuedAtIso is string && cert.issuedAtIso.size() >= 4 && cert.issuedAtIso.size() <= 64;
@@ -136,7 +137,7 @@ service cloud.firestore {
           'estimatedLevel', 'confidenceScore', 'strengths', 'knowledgeGaps',
           'selectedNodeId', 'recommendedNextId', 'nodes', 'edges',
           'studyPlan', 'bookmarkedVideoIds', 'latestSynthesis',
-          'videoTestResults', 'finalExam', 'certificate',
+          'videoTestResults', 'finalExam', 'capstoneProjects', 'certificate',
           'createdAt', 'updatedAt'
         ]) &&
         isValidId(data.id) &&
@@ -171,6 +172,10 @@ service cloud.firestore {
           (data.videoTestResults.size() == 0 || data.videoTestResults[0] is map)
         )) &&
         (!data.keys().hasAny(['finalExam']) || isValidFinalExamMap(data.finalExam)) &&
+        (!data.keys().hasAny(['capstoneProjects']) || (
+          data.capstoneProjects is list && data.capstoneProjects.size() <= 10 &&
+          (data.capstoneProjects.size() == 0 || data.capstoneProjects[0] is map)
+        )) &&
         (!data.keys().hasAny(['certificate']) || isValidCertificateMap(data.certificate)) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -271,9 +276,12 @@ service cloud.firestore {
             incoming().diff(existing()).affectedKeys().hasOnly(['latestSynthesis', 'selectedNodeId', 'updatedAt']) ||
             // Action: Post-video AI test score recording
             incoming().diff(existing()).affectedKeys().hasOnly(['videoTestResults', 'updatedAt']) ||
-            // Action: Final AI exam evaluation and certificate issuance (terminal lock once certified)
+            // Action: Capstone project assignment and AI evaluation update
+            incoming().diff(existing()).affectedKeys().hasOnly(['capstoneProjects', 'updatedAt']) ||
+            // Action: Final AI exam / project completion and certificate issuance (terminal lock once certified)
             (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['finalExam', 'certificate', 'updatedAt'])) ||
-            (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['finalExam', 'updatedAt']))
+            (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['finalExam', 'updatedAt'])) ||
+            (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['capstoneProjects', 'certificate', 'updatedAt']))
           );
         allow delete: if isEmailVerified() &&
           isOwner(userId) &&

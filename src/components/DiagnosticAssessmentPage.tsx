@@ -124,15 +124,15 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex flex-col overflow-x-hidden">
       {/* Top Progress Strip */}
       <header className="border-b border-slate-200 dark:border-[#273554] bg-white/80 dark:bg-[#0B1020]/80 backdrop-blur-md">
-        <div className="max-w-[1360px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               type="button"
               onClick={onBackToSetup}
-              className="p-2 rounded-lg text-slate-500 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] transition-colors cursor-pointer"
+              className="min-w-[40px] min-h-[40px] p-2 rounded-lg text-slate-500 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] transition-colors flex items-center justify-center shrink-0 cursor-pointer"
               aria-label="Back to setup"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -140,15 +140,15 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
             <SkillPathLogo />
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-[#AAB4C8] tabular-nums">
-            <span>Step 2 of 2</span>
-            <span aria-hidden="true">·</span>
+          <div className="flex items-center gap-2 sm:gap-3 text-xs font-medium text-slate-600 dark:text-[#AAB4C8] tabular-nums whitespace-nowrap shrink-0">
+            <span className="hidden sm:inline">Step 2 of 2</span>
+            <span aria-hidden="true" className="hidden sm:inline">·</span>
             <span>Question {currentQuestionNum} of {totalQuestions}</span>
           </div>
         </div>
 
         {/* 5-dot animated progress bar */}
-        <div className="max-w-[1360px] mx-auto px-6 pb-3 flex items-center gap-2">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 pb-3 flex items-center gap-2">
           {Array.from({ length: totalQuestions }).map((_, idx) => {
             const done = idx < profile.turnCount;
             const active = idx === profile.turnCount;
