@@ -22,6 +22,7 @@ import {
 import { User } from 'firebase/auth';
 import { SavedLearningPath } from '../lib/learningStore';
 import { formatDemoSavedTime } from '../lib/demoStorage';
+import { buildFallbackStudyPlan, computeRoadmapStats } from '../lib/roadmapUtils';
 import {
   CapstoneProjectItem,
   DashboardTab,
@@ -182,16 +183,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const firstName = user?.displayName?.split(' ')[0] || (isDemoMode ? 'Explorer' : 'Learner');
   const fullDisplayName = user?.displayName || (isDemoMode ? 'Demo Mode' : 'Learner');
   const nodes = skillTree?.nodes || [];
-  const masteredCount = nodes.filter((n) => n.status === 'mastered').length;
-  const totalCount = nodes.length;
-  const progressPct = totalCount > 0 ? Math.round((masteredCount / totalCount) * 100) : 0;
-
-  const currentFocusNode =
-    nodes.find((n) => n.id === skillTree?.recommendedNextId) ||
-    nodes.find((n) => n.status === 'ready') ||
-    nodes.find((n) => n.status === 'needs_review') ||
-    nodes[0] ||
-    null;
+  const {
+    totalCount,
+    masteredCount,
+    progressPct,
+    allModulesMastered,
+    currentFocusNode,
+  } = computeRoadmapStats(skillTree);
 
   const selectedNode =
     nodes.find((n) => n.id === selectedNodeId) || currentFocusNode;
@@ -199,17 +197,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const studyPlan: StudyPlanDay[] =
     skillTree?.studyPlan && skillTree.studyPlan.length > 0
       ? skillTree.studyPlan
-      : nodes.slice(0, 7).map((n, idx) => ({
-          day: idx + 1,
-          dateLabel: idx === 0 ? 'Day 1 · Today' : `Day ${idx + 1}`,
-          moduleId: n.id,
-          taskTitle: n.title,
-          estimatedMinutes: n.estimatedMinutes,
-          motivation: n.whyItMatters || n.summary,
-          completed: n.status === 'mastered',
-        }));
-
-  const allModulesMastered = totalCount > 0 && masteredCount === totalCount;
+      : buildFallbackStudyPlan(nodes);
 
   const handleOpenVideoForNode = (node: SkillNode) => {
     if (!isDemoMode && node.id !== selectedNode?.id) {
@@ -234,6 +222,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] flex pb-20 lg:pb-0 overflow-x-hidden">
+      <a
+        href="#dashboard-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-xl focus:bg-[#6D5DFB] focus:text-white focus:text-xs focus:font-semibold focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       {/* Desktop Fixed Left Sidebar */}
       <aside className="hidden lg:flex lg:flex-col w-[264px] shrink-0 border-r border-slate-200 dark:border-[#273554] bg-white dark:bg-[#11182B] sticky top-0 h-screen">
         <div className="p-6 border-b border-slate-100 dark:border-[#273554]/80">
@@ -272,6 +266,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <button
                 key={tab.id}
                 type="button"
+                aria-current={active ? 'page' : undefined}
                 onClick={() => onSelectTab(tab.id)}
                 className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-3 transition-all cursor-pointer ${
                   active
@@ -471,7 +466,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </header>
 
-        <main className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-5 md:px-8 py-6 md:py-9">
+        <main id="dashboard-main" className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-5 md:px-8 py-6 md:py-9">
           {isDemoMode && !user && (
             <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 dark:bg-[#FBBF24]/10 border border-amber-200 dark:border-[#FBBF24]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-1">
@@ -900,6 +895,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <button
               key={tab.id}
               type="button"
+              aria-current={active ? 'page' : undefined}
               onClick={() => onSelectTab(tab.id)}
               className={`flex-1 min-h-[44px] min-w-[44px] px-1 py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
                 active

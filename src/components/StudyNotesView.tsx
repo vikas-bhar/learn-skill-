@@ -14,6 +14,10 @@ import {
 import { SkillNode, VideoSynthesis } from '../types/learning';
 import { copyTextToClipboard } from '../lib/clipboard';
 import { toUserFriendlyError } from '../lib/errors';
+import {
+  buildNotesFilename,
+  buildStudyNotesMarkdown,
+} from '../lib/studyNotesExport';
 import { useToast } from '../context/ToastContext';
 
 interface StudyNotesViewProps {
@@ -87,44 +91,8 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
     };
   }, [synthesis?.mermaidFlowchart, diagramBaseId, isDark]);
 
-  const buildMarkdown = () => {
-    if (!synthesis) return '';
-    return [
-      synthesis.videoTitle,
-      '========================================',
-      '',
-      synthesis.executiveSummary,
-      '',
-      'Key Takeaways',
-      '----------------------------------------',
-      ...synthesis.keyTakeaways.map((t) => `- ${t}`),
-      '',
-      'Structured Study Notes',
-      '----------------------------------------',
-      ...synthesis.structuredNotes.flatMap((s) => [
-        `${s.heading} (${s.timestampHint})`,
-        ...s.bullets.map((b) => `- ${b}`),
-        '',
-      ]),
-      ...(synthesis.commonMistakes?.length
-        ? [
-            'Common Mistakes',
-            '----------------------------------------',
-            ...synthesis.commonMistakes.map((m) => `- ${m}`),
-            '',
-          ]
-        : []),
-      ...(synthesis.practiceTask
-        ? ['Practice Task', '----------------------------------------', synthesis.practiceTask, '']
-        : []),
-      'Concept Flowchart (Mermaid)',
-      '----------------------------------------',
-      synthesis.mermaidFlowchart,
-    ].join('\n');
-  };
-
   const handleCopy = async () => {
-    const md = buildMarkdown();
+    const md = buildStudyNotesMarkdown(synthesis);
     if (!md) return;
     const ok = await copyTextToClipboard(md);
     if (ok) {
@@ -137,13 +105,13 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   };
 
   const handleDownload = () => {
-    const md = buildMarkdown();
+    const md = buildStudyNotesMarkdown(synthesis);
     if (!md || !synthesis) return;
     const blob = new Blob([md], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${synthesis.videoId}-study-notes.txt`;
+    a.download = buildNotesFilename(synthesis.videoId);
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -174,8 +142,9 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
               <button
                 type="button"
                 disabled={isRegenerating}
+                aria-busy={isRegenerating}
                 onClick={() => void onRegenerateNotes(activeNode)}
-                className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-xs font-semibold text-slate-700 dark:text-[#F8FAFC] hover:border-slate-300 dark:hover:border-white/20 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] text-xs font-semibold text-slate-700 dark:text-[#F8FAFC] hover:border-slate-300 dark:hover:border-white/20 inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isRegenerating ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -263,8 +232,9 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                 <button
                   type="button"
                   disabled={isRegenerating}
+                  aria-busy={isRegenerating}
                   onClick={() => void onRegenerateNotes(activeNode)}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isRegenerating ? (
                     <>
@@ -289,6 +259,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
                   </span>
                   <button
                     type="button"
+                    aria-expanded={showFlowchart}
                     onClick={() => setShowFlowchart((v) => !v)}
                     className="text-xs font-semibold text-[#4D8DFF] hover:underline inline-flex items-center gap-1 cursor-pointer"
                   >

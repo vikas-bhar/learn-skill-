@@ -120,7 +120,8 @@ Available Scripts
 - `npm run start` - Starts the server in Node production mode
 - `npm run build` - Builds the production frontend bundle into `dist/`
 - `npm run preview` - Previews the built Vite bundle locally
-- `npm run lint` - Runs TypeScript type-checking (`tsc --noEmit`)
+- `npm run lint` - Runs strict TypeScript checks across frontend, API, and tests plus Firestore rules ESLint
+- `npm test` - Runs the automated unit and API integration test suite
 - `npm run test:api` - Runs the API smoke test suite against local or deployed endpoints
 - `npm run clean` - Removes `dist/` and build artifacts
 

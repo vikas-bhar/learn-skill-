@@ -70,8 +70,12 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     const answer = (freeText.trim() || selectedChoice).trim();
-    if (!answer || isLoading) return;
-    await onSendMessage(answer);
+    if (!answer || isLoading || isGeneratingTree) return;
+    try {
+      await onSendMessage(answer);
+    } catch {
+      // Parent error state and toast handle reporting
+    }
   };
 
   // Full-screen AI Analysis Transition when building roadmap
@@ -381,8 +385,9 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
 
                 <button
                   type="submit"
-                  disabled={isLoading || (!selectedChoice && !freeText.trim())}
-                  className="px-6 py-3 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] disabled:opacity-40 hover:shadow-[0_0_24px_rgba(109,93,251,0.45)] transition-all inline-flex items-center gap-2 cursor-pointer"
+                  disabled={isLoading || isGeneratingTree || (!selectedChoice && !freeText.trim())}
+                  aria-busy={isLoading || isGeneratingTree}
+                  className="px-6 py-3 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-[0_0_24px_rgba(109,93,251,0.45)] transition-all inline-flex items-center gap-2 cursor-pointer"
                 >
                   {isLoading ? (
                     <>

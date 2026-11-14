@@ -261,9 +261,17 @@ export const VideosView: React.FC<VideosViewProps> = ({
           <button
             type="submit"
             disabled={isSearching || !query.trim()}
-            className="px-4 py-2.5 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] disabled:opacity-40 whitespace-nowrap shrink-0 cursor-pointer"
+            aria-busy={isSearching}
+            className="px-4 py-2.5 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
           >
-            {isSearching ? 'Searching…' : 'Find Videos'}
+            {isSearching ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Searching…</span>
+              </>
+            ) : (
+              <span>Find Videos</span>
+            )}
           </button>
         </form>
       </div>
@@ -325,6 +333,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
                 <div>
                   <button
                     type="button"
+                    aria-label={`Play ${v.title}`}
                     onClick={() => onSelectVideo(v)}
                     className="relative w-full aspect-video bg-slate-900 overflow-hidden block cursor-pointer"
                   >
@@ -389,6 +398,7 @@ export const VideosView: React.FC<VideosViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onToggleBookmark(v.videoId)}
+                    aria-pressed={isBookmarked}
                     aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark video'}
                     className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                       isBookmarked
@@ -433,7 +443,8 @@ export const VideosView: React.FC<VideosViewProps> = ({
                     type="button"
                     onClick={() => void handleStartVideoTest()}
                     disabled={quizLoading}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                    aria-busy={quizLoading}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {quizLoading ? (
                       <>
@@ -479,8 +490,9 @@ export const VideosView: React.FC<VideosViewProps> = ({
               <button
                 type="button"
                 disabled={isSummarizing}
+                aria-busy={isSummarizing}
                 onClick={() => void onGenerateNotes(selectedVideo, notesContext)}
-                className="w-full py-3 px-5 rounded-xl bg-slate-100 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-slate-900 dark:text-white text-sm font-semibold transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3 px-5 rounded-xl bg-slate-100 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 text-slate-900 dark:text-white text-sm font-semibold transition-all inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSummarizing ? (
                   <>
@@ -672,11 +684,17 @@ export const VideosView: React.FC<VideosViewProps> = ({
                         )}
                         <button
                           type="button"
+                          disabled={quizLoading}
+                          aria-busy={quizLoading}
                           onClick={() => void handleStartVideoTest()}
-                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] text-xs font-semibold text-slate-800 dark:text-white inline-flex items-center gap-1.5 cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] text-xs font-semibold text-slate-800 dark:text-white inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Retake Test</span>
+                          {quizLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          )}
+                          <span>{quizLoading ? 'Preparing AI Test…' : 'Retake Test'}</span>
                         </button>
                       </div>
                     </div>
@@ -688,7 +706,8 @@ export const VideosView: React.FC<VideosViewProps> = ({
                       <button
                         type="submit"
                         disabled={evalLoading || !allTestAnswered}
-                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40"
+                        aria-busy={evalLoading}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {evalLoading ? (
                           <>

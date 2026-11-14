@@ -108,6 +108,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const firstName = user?.displayName?.split(' ')[0] || 'Learner';
 
+  React.useEffect(() => {
+    if (!showModeModal && !mobileMenuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowModeModal(false);
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showModeModal, mobileMenuOpen]);
+
   const handleRequestStart = (presetTopic?: string) => {
     setMobileMenuOpen(false);
     if (user) {
@@ -118,7 +130,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     setShowModeModal(true);
   };
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] relative overflow-x-hidden">
+    <div id="top" className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] relative overflow-x-hidden">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-xl focus:bg-[#6D5DFB] focus:text-white focus:text-xs focus:font-semibold focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
       {/* Subtle architectural grid & indigo radial backdrop */}
       <div
         aria-hidden="true"
@@ -395,7 +413,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       )}
 
-      <main id="top" className="relative z-10">
+      <main id="main-content" className="relative z-10">
         {/* Hero Section */}
         <section className="max-w-[1280px] mx-auto px-6 pt-16 pb-24 lg:pt-24 lg:pb-32">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-10 items-center">

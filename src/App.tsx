@@ -588,7 +588,9 @@ export default function App() {
         clearDemoState();
         setDemoLastSavedAt(null);
       } catch (err) {
-        setDiagError(formatFirebaseUserError(err));
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
       } finally {
         setIsSavingPath(false);
       }
@@ -602,6 +604,7 @@ export default function App() {
       videoTestResults,
       capstoneProjects,
       setActivePathId,
+      showToast,
     ]
   );
 
@@ -625,7 +628,9 @@ export default function App() {
         setActivePathId(null);
       }
     } catch (err) {
-      setDiagError(formatFirebaseUserError(err));
+      const msg = formatFirebaseUserError(err);
+      setDiagError(msg);
+      showToast(msg, 'error');
     }
   };
 
@@ -663,10 +668,14 @@ export default function App() {
           unlocked,
           nextRec,
           selectedNodeId
-        ).catch((err) => setDiagError(formatFirebaseUserError(err)));
+        ).catch((err) => {
+          const msg = formatFirebaseUserError(err);
+          setDiagError(msg);
+          showToast(msg, 'error');
+        });
       }
     },
-    [skillTree, user, activePathId, selectedNodeId]
+    [skillTree, user, activePathId, selectedNodeId, showToast]
   );
 
   const handleGenerateNotesFromVideo = async (
@@ -765,9 +774,11 @@ export default function App() {
     });
 
     if (user && activePathId) {
-      void updateLearningPathStudyPlan(user.uid, activePathId, updatedPlan).catch((err) =>
-        setDiagError(formatFirebaseUserError(err))
-      );
+      void updateLearningPathStudyPlan(user.uid, activePathId, updatedPlan).catch((err) => {
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
+      });
     }
   };
 
@@ -776,9 +787,11 @@ export default function App() {
     setBookmarkedIds(nextBookmarks);
 
     if (user && activePathId) {
-      void updateLearningPathBookmarks(user.uid, activePathId, nextBookmarks).catch((err) =>
-        setDiagError(formatFirebaseUserError(err))
-      );
+      void updateLearningPathBookmarks(user.uid, activePathId, nextBookmarks).catch((err) => {
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
+      });
     }
   };
 
@@ -817,7 +830,9 @@ export default function App() {
           await updateLearningPathVideoTests(user.uid, activePathId, nextResults);
         }
       } catch (err) {
-        setDiagError(formatFirebaseUserError(err));
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
       }
     } else {
       setLocalScoreProfile((prev) => ({
@@ -888,7 +903,9 @@ export default function App() {
           );
         }
       } catch (err) {
-        setDiagError(formatFirebaseUserError(err));
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
       }
     } else {
       setLocalScoreProfile((prev) => ({
@@ -906,7 +923,9 @@ export default function App() {
       try {
         await saveCapstoneProjectsAndCertificate(user.uid, activePathId, projects, null);
       } catch (err) {
-        setDiagError(formatFirebaseUserError(err));
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
       }
     }
   };
@@ -964,7 +983,9 @@ export default function App() {
           );
         }
       } catch (err) {
-        setDiagError(formatFirebaseUserError(err));
+        const msg = formatFirebaseUserError(err);
+        setDiagError(msg);
+        showToast(msg, 'error');
       }
     } else {
       setLocalScoreProfile((prev) => ({

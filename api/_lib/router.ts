@@ -39,6 +39,7 @@ function sendJson(res: ServerResponse, statusCode: number, payload: unknown): vo
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.end(json);
 }
 
@@ -91,7 +92,7 @@ async function readJsonBody<T extends Record<string, unknown>>(req: ApiRequest):
   }
 }
 
-function normalizePathname(rawUrl: string | undefined): string {
+export function normalizePathname(rawUrl: string | undefined): string {
   const safeUrl = rawUrl || '/api';
   let pathname = '/api';
   try {

@@ -22,6 +22,7 @@ import {
   SkillTreeData,
 } from '../types/learning';
 import { safeApiPost, toUserFriendlyError } from '../lib/errors';
+import { getNodeStatusLabel, getTierLabel } from '../lib/roadmapUtils';
 import { useToast } from '../context/ToastContext';
 
 interface RoadmapTreeViewProps {
@@ -76,10 +77,20 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
   }, [selectedNode?.id]);
 
   useEffect(() => {
+    if (!mobileSheetOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileSheetOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileSheetOpen]);
+
+  useEffect(() => {
     if (!svgRef.current) return;
 
     const svgEl = svgRef.current;
-    const width = 980;
     const height = 520;
     const nodeWidth = 204;
     const nodeHeight = 88;
@@ -150,15 +161,7 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
         .attr('font-size', '11px')
         .attr('font-weight', '600')
         .attr('font-family', 'Plus Jakarta Sans, sans-serif')
-        .text(
-          tier === 1
-            ? 'Foundations'
-            : tier === 2
-            ? 'Core Mechanics'
-            : tier === 3
-            ? 'Applied Systems'
-            : 'Synthesis'
-        );
+        .text(getTierLabel(tier));
     });
 
     const linkGen = d3
@@ -224,13 +227,27 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
         ? 'rgba(255,255,255,0.1)'
         : '#CBD5E1';
 
+      const statusLabel = getNodeStatusLabel(node.status);
       const g = nodesGroup
         .append('g')
         .attr('transform', `translate(${node.x}, ${node.y})`)
+        .attr('role', 'button')
+        .attr('tabindex', '0')
+        .attr(
+          'aria-label',
+          `${node.title}, ${statusLabel}, ${node.estimatedMinutes} minutes`
+        )
         .style('cursor', 'pointer')
         .on('click', () => {
           onSelectNode(node.id);
           setMobileSheetOpen(true);
+        })
+        .on('keydown', (event: KeyboardEvent) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelectNode(node.id);
+            setMobileSheetOpen(true);
+          }
         });
 
       // Subtle pulsing ring for Current Focus node
@@ -294,15 +311,7 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
         ? '#73809B'
         : '#64748B';
 
-      const labelText = isCompleted
-        ? 'Completed'
-        : isCurrent
-        ? 'Current Focus'
-        : isUpNext
-        ? 'Up Next'
-        : 'Future';
-
-      top.append('xhtml:span').style('color', labelColor).text(labelText);
+      top.append('xhtml:span').style('color', labelColor).text(statusLabel);
       top
         .append('xhtml:span')
         .style('color', isDark ? '#73809B' : '#64748B')
@@ -489,7 +498,8 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
           type="button"
           onClick={() => void handleLoadQuiz()}
           disabled={quizLoading}
-          className="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] text-slate-800 dark:text-[#F8FAFC] text-xs font-semibold hover:border-slate-300 dark:hover:border-white/20 transition-all inline-flex items-center justify-center gap-2 cursor-pointer"
+          aria-busy={quizLoading}
+          className="w-full py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] text-slate-800 dark:text-[#F8FAFC] text-xs font-semibold hover:border-slate-300 dark:hover:border-white/20 transition-all inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {quizLoading ? (
             <>
@@ -569,9 +579,17 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
           <button
             type="submit"
             disabled={evalLoading || (!selectedOption && !customAnswer.trim())}
-            className="w-full py-2 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-[#0B1020] text-xs font-semibold cursor-pointer disabled:opacity-40"
+            aria-busy={evalLoading}
+            className="w-full py-2 px-4 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-[#0B1020] text-xs font-semibold inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {evalLoading ? 'Evaluating…' : 'Verify Answer'}
+            {evalLoading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Evaluating…</span>
+              </>
+            ) : (
+              <span>Verify Answer</span>
+            )}
           </button>
           {evaluation && (
             <div
@@ -592,7 +610,10 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
   return (
     <div className="space-y-6 animate-fade-up">
       {error && (
-        <div className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 text-xs text-rose-800 dark:text-[#FB7185]">
+        <div
+          role="alert"
+          className="p-4 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 text-xs text-rose-800 dark:text-[#FB7185]"
+        >
           {error}
         </div>
       )}
@@ -656,6 +677,8 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
           <div className="w-full overflow-x-auto bg-slate-50/70 dark:bg-[#0B1020]/60">
             <svg
               ref={svgRef}
+              role="region"
+              aria-label={`Interactive skill roadmap for ${skillTree.topic}`}
               viewBox="0 0 980 520"
               className="w-full h-[500px] min-w-[740px] select-none"
             />
@@ -670,7 +693,12 @@ export const RoadmapTreeView: React.FC<RoadmapTreeViewProps> = ({
 
       {/* Mobile Bottom Sheet for Module Details */}
       {mobileSheetOpen && selectedNode && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Module details for ${selectedNode.title}`}
+          className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end"
+        >
           <div className="w-full max-h-[85vh] overflow-y-auto bg-white dark:bg-[#17213A] rounded-t-2xl p-6 space-y-4 border-t border-white/10">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 dark:text-[#AAB4C8]">
