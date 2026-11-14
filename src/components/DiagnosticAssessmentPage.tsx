@@ -348,7 +348,7 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
                     onClick={() => void onGenerateSkillTree()}
                     className="text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA] hover:underline cursor-pointer"
                   >
-                    Skip remaining & generate path
+                    Skip remaining and generate path
                   </button>
                 ) : (
                   <span className="text-xs text-slate-500 dark:text-[#73809B]">
@@ -368,7 +368,7 @@ export const DiagnosticAssessmentPage: React.FC<DiagnosticAssessmentPageProps> =
                     </>
                   ) : profile.turnCount >= 4 ? (
                     <>
-                      <span>Finish & Build Path</span>
+                      <span>Finish and Build Path</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   ) : (

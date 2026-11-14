@@ -83,6 +83,23 @@ function safeJsonParse<T>(raw: string | undefined, fallback: T): T {
   }
 }
 
+function cleanDisplayText(raw: string | undefined): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/[*^$#@]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function cleanDisplayList(list: string[] | undefined, max: number): string[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .slice(0, max)
+    .map((item) => cleanDisplayText(item))
+    .filter(Boolean);
+}
+
 function sanitizeMermaidFlowchart(raw: string): string {
   let code = (raw || '')
     .replace(/^```mermaid\s*/i, '')
@@ -211,7 +228,7 @@ Evaluate the learner's latest response accurately:
         contents: prompt,
         config: {
           systemInstruction:
-            'You are an expert adaptive curriculum diagnostician. Ask one sharp conceptual question at a time. Never lecture at length during diagnosis; calibrate the learner efficiently and honestly.',
+            'You are an expert adaptive curriculum diagnostician. Ask one sharp conceptual question at a time. Never lecture at length during diagnosis; calibrate the learner efficiently and honestly. Use plain clean prose and never include the characters *, &, ^, $, #, or @ in your text.',
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -274,19 +291,20 @@ Evaluate the learner's latest response accurately:
         : 'partial';
 
       res.json({
-        reply: parsed.reply,
-        suggestedReplies: (parsed.suggestedReplies || []).slice(0, 3),
+        reply: cleanDisplayText(parsed.reply),
+        suggestedReplies: cleanDisplayList(parsed.suggestedReplies, 3),
         assessment: {
-          ...parsed.assessment,
+          conceptChecked: cleanDisplayText(parsed.assessment.conceptChecked),
+          note: cleanDisplayText(parsed.assessment.note),
           verdict,
         },
         updatedProfile: {
-          topic,
-          goal: goal || '',
+          topic: cleanDisplayText(topic),
+          goal: cleanDisplayText(goal || ''),
           estimatedLevel: parsed.updatedProfile.estimatedLevel || 'Beginner',
           confidenceScore: Math.min(100, Math.max(0, Number(parsed.updatedProfile.confidenceScore) || 25)),
-          strengths: (parsed.updatedProfile.strengths || []).slice(0, 6),
-          knowledgeGaps: (parsed.updatedProfile.knowledgeGaps || []).slice(0, 6),
+          strengths: cleanDisplayList(parsed.updatedProfile.strengths, 6),
+          knowledgeGaps: cleanDisplayList(parsed.updatedProfile.knowledgeGaps, 6),
           readyForSkillTree: Boolean(parsed.updatedProfile.readyForSkillTree || nextTurnCount >= 2),
           turnCount: nextTurnCount,
         },
@@ -333,7 +351,7 @@ Identified Knowledge Gaps: ${(profile?.knowledgeGaps || []).join(', ') || 'Gener
 Diagnostic Excerpt:
 ${transcript || 'Direct generation requested.'}
 
-Design 8 tightly scoped skill nodes organized across 4 progressive tiers (tier 1 = Foundations, tier 2 = Core Mechanics, tier 3 = Applied Architecture, tier 4 = Synthesis & Mastery).
+Design 8 tightly scoped skill nodes organized across 4 progressive tiers (tier 1 = Foundations, tier 2 = Core Mechanics, tier 3 = Applied Architecture, tier 4 = Synthesis and Mastery).
 Rules:
 - Use short, valid IDs like "n1", "n2", ..., "n8".
 - Every prerequisite edge MUST point strictly from a lower tier to a higher tier (so the graph is strictly acyclic).
@@ -346,14 +364,15 @@ Rules:
   * "locked" for advanced Tier 3-4 nodes whose prerequisites are not yet mastered.
 - Ensure at least 2 nodes are immediately actionable ("ready" or "needs_review").
 - Include difficulty ("Beginner", "Intermediate", or "Advanced"), whyItMatters (1 crisp sentence), keyConcepts (2-4 short keywords), commonMistakes (1-2 items), practiceTask (1 concrete hands-on exercise), learningObjectives (2-3 items), diagnosticRationale, estimatedMinutes (15-60), and a focused youtubeSearchQuery.
-- Also generate a 7-item studyPlan (days 1..7) referencing node IDs, tailored to ${dailyMinutes} min/day.`;
+- Also generate a 7-item studyPlan (days 1..7) referencing node IDs, tailored to ${dailyMinutes} min/day.
+- Never use the characters *, &, ^, $, #, or @ in any titles, summaries, objectives, or tasks; write "and" instead of "&".`;
 
       const response = await ai.models.generateContent({
         model: MODEL_NAME,
         contents: prompt,
         config: {
           systemInstruction:
-            'You are a curriculum architect generating structured acyclic skill dependency graphs and 7-day momentum plans tailored to a learner diagnostic.',
+            'You are a curriculum architect generating structured acyclic skill dependency graphs and 7-day momentum plans tailored to a learner diagnostic. Never output *, &, ^, $, #, or @ in text.',
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -465,11 +484,19 @@ Rules:
         const status = validStatuses.has(n.status) ? n.status : tier === 1 ? 'ready' : 'locked';
         return {
           ...n,
+          title: cleanDisplayText(n.title),
+          summary: cleanDisplayText(n.summary),
+          whyItMatters: cleanDisplayText(n.whyItMatters),
+          keyConcepts: cleanDisplayList(n.keyConcepts, 4),
+          commonMistakes: cleanDisplayList(n.commonMistakes, 3),
+          practiceTask: cleanDisplayText(n.practiceTask),
+          diagnosticRationale: cleanDisplayText(n.diagnosticRationale),
+          youtubeSearchQuery: cleanDisplayText(n.youtubeSearchQuery),
           tier,
           prerequisites: prereqs,
           status: status as 'mastered' | 'ready' | 'needs_review' | 'locked',
           estimatedMinutes: Math.max(5, Math.min(90, Number(n.estimatedMinutes) || 20)),
-          learningObjectives: (n.learningObjectives || []).slice(0, 4),
+          learningObjectives: cleanDisplayList(n.learningObjectives, 4),
         };
       });
 
@@ -497,14 +524,14 @@ Rules:
         day: idx + 1,
         dateLabel: idx === 0 ? 'Day 1 · Today' : `Day ${idx + 1}`,
         moduleId: item.moduleId || normalizedNodes[idx % normalizedNodes.length]?.id || 'n1',
-        taskTitle: item.taskTitle,
+        taskTitle: cleanDisplayText(item.taskTitle),
         estimatedMinutes: Math.max(15, Math.min(120, Number(item.estimatedMinutes) || dailyMinutes)),
-        motivation: item.motivation,
+        motivation: cleanDisplayText(item.motivation),
         completed: false,
       }));
 
       res.json({
-        topic,
+        topic: cleanDisplayText(topic),
         generatedAt: new Date().toISOString(),
         nodes: normalizedNodes,
         edges,
@@ -561,9 +588,9 @@ Create ONE applied conceptual check question (not trivial trivia) to verify the 
 
       res.json({
         nodeId: node.id,
-        question: parsed.question,
-        options: (parsed.options || []).slice(0, 4),
-        hint: parsed.hint,
+        question: cleanDisplayText(parsed.question),
+        options: cleanDisplayList(parsed.options, 4),
+        hint: cleanDisplayText(parsed.hint),
       });
     } catch (error) {
       handleGeminiError(res, error, 'Quiz generation error.');
@@ -592,7 +619,7 @@ Skill: "${node.title}" (${node.summary})
 Question: "${question}"
 Learner's Answer: "${userAnswer}"
 
-Determine if the learner's answer demonstrates accurate conceptual mastery (passed: true/false) and provide crisp 1-2 sentence pedagogical feedback explaining why.`,
+Determine if the learner's answer demonstrates accurate conceptual mastery (passed: true/false) and provide crisp 1-2 sentence pedagogical feedback explaining why. Never use *, &, ^, $, #, or @ characters.`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -611,7 +638,10 @@ Determine if the learner's answer demonstrates accurate conceptual mastery (pass
         res.status(502).json({ error: 'Failed to evaluate mastery response.' });
         return;
       }
-      res.json(parsed);
+      res.json({
+        passed: Boolean(parsed.passed),
+        feedback: cleanDisplayText(parsed.feedback),
+      });
     } catch (error) {
       handleGeminiError(res, error, 'Evaluation error.');
     }
@@ -803,14 +833,15 @@ Requirements for mermaidFlowchart:
 - Must be valid Mermaid v11 syntax starting with "flowchart TD".
 - Use 6 to 10 clear nodes (IDs A, B, C...) with quoted labels like A["Core Concept"] --> B["Mechanism"].
 - Avoid raw parentheses (), colons :, or curly braces inside unquoted node labels — always wrap labels in double quotes inside square brackets: A["Label text"].
-- Represent the actual causal/architectural flow of the concept, including at least one decision diamond {"Condition?"}.`;
+- Represent the actual causal/architectural flow of the concept, including at least one decision diamond {"Condition?"}.
+- Never include *, &, ^, $, #, or @ characters anywhere in notes, takeaways, or node labels; write "and" instead of "&".`;
 
       const response = await ai.models.generateContent({
         model: MODEL_NAME,
         contents: prompt,
         config: {
           systemInstruction:
-            'You are an academic synthesizer creating crisp, high-signal study notes and syntactically valid Mermaid flowcharts.',
+            'You are an academic synthesizer creating crisp, high-signal study notes and syntactically valid Mermaid flowcharts. Never include *, &, ^, $, #, or @ characters in your text.',
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -864,17 +895,416 @@ Requirements for mermaidFlowchart:
 
       res.json({
         videoId,
-        videoTitle,
-        executiveSummary: parsed.executiveSummary,
-        keyTakeaways: (parsed.keyTakeaways || []).slice(0, 6),
-        structuredNotes: (parsed.structuredNotes || []).slice(0, 5),
-        mermaidFlowchart: sanitizeMermaidFlowchart(parsed.mermaidFlowchart),
-        studyChecklist: (parsed.studyChecklist || []).slice(0, 5),
-        commonMistakes: (parsed.commonMistakes || []).slice(0, 3),
-        practiceTask: parsed.practiceTask || '',
+        videoTitle: cleanDisplayText(videoTitle),
+        executiveSummary: cleanDisplayText(parsed.executiveSummary),
+        keyTakeaways: cleanDisplayList(parsed.keyTakeaways, 6),
+        structuredNotes: (parsed.structuredNotes || []).slice(0, 5).map((s) => ({
+          heading: cleanDisplayText(s.heading),
+          timestampHint: cleanDisplayText(s.timestampHint),
+          bullets: cleanDisplayList(s.bullets, 6),
+        })),
+        mermaidFlowchart: cleanDisplayText(sanitizeMermaidFlowchart(parsed.mermaidFlowchart)),
+        studyChecklist: cleanDisplayList(parsed.studyChecklist, 5),
+        commonMistakes: cleanDisplayList(parsed.commonMistakes, 3),
+        practiceTask: cleanDisplayText(parsed.practiceTask),
       });
     } catch (error) {
       handleGeminiError(res, error, 'Summarization error.');
+    }
+  });
+
+  // Module 4: Post-Video AI Quiz Generation (3 applied questions)
+  app.post('/api/videos/quiz', async (req: Request, res: Response) => {
+    try {
+      const {
+        videoId,
+        videoTitle,
+        channelTitle = '',
+        topic = '',
+        skillTitle = '',
+        learningObjectives = [],
+        synthesisSummary = '',
+      } = req.body as {
+        videoId: string;
+        videoTitle: string;
+        channelTitle?: string;
+        topic?: string;
+        skillTitle?: string;
+        learningObjectives?: string[];
+        synthesisSummary?: string;
+      };
+
+      if (!videoId || !videoTitle) {
+        res.status(400).json({ error: 'videoId and videoTitle are required.' });
+        return;
+      }
+
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: `Create a 3-question post-video mastery test for a learner who just completed this educational video:
+Video Title: "${videoTitle}"
+Channel: "${channelTitle}"
+Skill Topic: "${topic}"
+Module: "${skillTitle}"
+Learning Objectives: ${learningObjectives.join('; ') || 'Core concepts covered in this video'}
+${synthesisSummary ? `Summary Context: ${synthesisSummary}` : ''}
+
+Requirements:
+- Generate 3 distinct, practical questions (IDs "q1", "q2", "q3") testing comprehension and real-world application of the video.
+- Each question must include 4 plausible multiple-choice options and a concise 2-4 word conceptTag.
+- Never include *, &, ^, $, #, or @ characters anywhere; write "and" instead of "&".`,
+        config: {
+          systemInstruction:
+            'You are an educational assessment designer creating concise post-video comprehension checks. Never output *, &, ^, $, #, or @ characters.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              questions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    prompt: { type: Type.STRING },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    conceptTag: { type: Type.STRING },
+                  },
+                  required: ['id', 'prompt', 'options', 'conceptTag'],
+                },
+              },
+            },
+            required: ['questions'],
+          },
+        },
+      });
+
+      const parsed = safeJsonParse<{
+        questions: Array<{ id: string; prompt: string; options: string[]; conceptTag: string }>;
+      } | null>(response.text, null);
+
+      if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+        res.status(502).json({ error: 'Could not generate post-video test questions.' });
+        return;
+      }
+
+      res.json({
+        videoId,
+        questions: parsed.questions.slice(0, 3).map((q, idx) => ({
+          id: cleanDisplayText(q.id) || `q${idx + 1}`,
+          prompt: cleanDisplayText(q.prompt),
+          options: cleanDisplayList(q.options, 4),
+          conceptTag: cleanDisplayText(q.conceptTag) || 'Concept Check',
+        })),
+      });
+    } catch (error) {
+      handleGeminiError(res, error, 'Post-video quiz generation error.');
+    }
+  });
+
+  // Module 4: Post-Video AI Scoring
+  app.post('/api/videos/evaluate', async (req: Request, res: Response) => {
+    try {
+      const {
+        videoId,
+        videoTitle,
+        topic = '',
+        skillTitle = '',
+        questions = [],
+        userAnswers = [],
+      } = req.body as {
+        videoId: string;
+        videoTitle: string;
+        topic?: string;
+        skillTitle?: string;
+        questions: Array<{ id: string; prompt: string; options?: string[] }>;
+        userAnswers: Array<{ questionId: string; answer: string }>;
+      };
+
+      if (!videoId || !Array.isArray(questions) || questions.length === 0) {
+        res.status(400).json({ error: 'Questions and learner answers are required.' });
+        return;
+      }
+
+      const answerMap = new Map(userAnswers.map((a) => [a.questionId, a.answer]));
+      const qaText = questions
+        .map(
+          (q, idx) =>
+            `Question ${idx + 1} (${q.id}): ${q.prompt}\nLearner Answer: ${
+              answerMap.get(q.id) || 'No answer provided'
+            }`
+        )
+        .join('\n\n');
+
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: `Grade this post-video comprehension test accurately and fairly:
+Topic: "${topic}"
+Module: "${skillTitle}"
+Video: "${videoTitle}"
+
+${qaText}
+
+Grading rules:
+- Evaluate each question carefully (correct: true/false) with a 1-sentence pedagogical explanation.
+- Compute score as an integer from 0 to 100 reflecting overall accuracy.
+- Set passed to true when score is 60 or higher.
+- Provide concise overall feedback (2 sentences max).
+- Never include *, &, ^, $, #, or @ characters; write "and" instead of "&".`,
+        config: {
+          systemInstruction:
+            'You are a fair, accurate academic grader evaluating post-video test answers. Never output *, &, ^, $, #, or @ characters.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              score: { type: Type.INTEGER },
+              passed: { type: Type.BOOLEAN },
+              feedback: { type: Type.STRING },
+              questionResults: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    questionId: { type: Type.STRING },
+                    correct: { type: Type.BOOLEAN },
+                    feedback: { type: Type.STRING },
+                  },
+                  required: ['questionId', 'correct', 'feedback'],
+                },
+              },
+            },
+            required: ['score', 'passed', 'feedback', 'questionResults'],
+          },
+        },
+      });
+
+      const parsed = safeJsonParse<{
+        score: number;
+        passed: boolean;
+        feedback: string;
+        questionResults: Array<{ questionId: string; correct: boolean; feedback: string }>;
+      } | null>(response.text, null);
+
+      if (!parsed) {
+        res.status(502).json({ error: 'Failed to score post-video test.' });
+        return;
+      }
+
+      const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+      const passed = score >= 60;
+      const pointsAwarded = passed ? score + (score >= 85 ? 25 : 10) : Math.max(10, Math.round(score * 0.4));
+
+      res.json({
+        score,
+        passed,
+        pointsAwarded,
+        feedback: cleanDisplayText(parsed.feedback),
+        questionResults: (parsed.questionResults || []).slice(0, 5).map((qr, idx) => ({
+          questionId: cleanDisplayText(qr.questionId) || questions[idx]?.id || `q${idx + 1}`,
+          correct: Boolean(qr.correct),
+          feedback: cleanDisplayText(qr.feedback),
+        })),
+      });
+    } catch (error) {
+      handleGeminiError(res, error, 'Post-video scoring error.');
+    }
+  });
+
+  // Module 5: Final Comprehensive AI Skill Exam Generation (5 questions across all modules)
+  app.post('/api/skill-tree/final-exam/generate', async (req: Request, res: Response) => {
+    try {
+      const { topic, goal = '', estimatedLevel = 'Intermediate', nodes = [] } = req.body as {
+        topic: string;
+        goal?: string;
+        estimatedLevel?: string;
+        nodes: Array<{ id: string; title: string; summary: string; tier: number }>;
+      };
+
+      if (!topic || !topic.trim()) {
+        res.status(400).json({ error: 'Topic is required to generate the final certification exam.' });
+        return;
+      }
+
+      const modulesText = nodes
+        .slice(0, 12)
+        .map((n) => `Tier ${n.tier} - ${n.title}: ${n.summary}`)
+        .join('\n');
+
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: `Generate a Final Comprehensive Certification Exam for a learner who has completed all modules in this skill track:
+Topic: "${topic}"
+${goal ? `Goal: "${goal}"` : ''}
+Target Level: ${estimatedLevel}
+Completed Skill Modules:
+${modulesText || topic}
+
+Requirements:
+- Generate exactly 5 applied synthesis questions (IDs "f1" through "f5") spanning foundations to real-world architecture and troubleshooting.
+- Each question must include prompt, 4 plausible multiple-choice options, the moduleTitle it tests, and a short 1-sentence hint.
+- Never include *, &, ^, $, #, or @ characters anywhere; write "and" instead of "&".`,
+        config: {
+          systemInstruction:
+            'You are a lead certification examiner creating rigorous, fair final mastery exams. Never output *, &, ^, $, #, or @ characters.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              questions: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    prompt: { type: Type.STRING },
+                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    moduleTitle: { type: Type.STRING },
+                    hint: { type: Type.STRING },
+                  },
+                  required: ['id', 'prompt', 'options', 'moduleTitle', 'hint'],
+                },
+              },
+            },
+            required: ['questions'],
+          },
+        },
+      });
+
+      const parsed = safeJsonParse<{
+        questions: Array<{ id: string; prompt: string; options: string[]; moduleTitle: string; hint: string }>;
+      } | null>(response.text, null);
+
+      if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+        res.status(502).json({ error: 'Failed to generate final certification exam.' });
+        return;
+      }
+
+      res.json({
+        topic: cleanDisplayText(topic),
+        questions: parsed.questions.slice(0, 5).map((q, idx) => ({
+          id: cleanDisplayText(q.id) || `f${idx + 1}`,
+          prompt: cleanDisplayText(q.prompt),
+          options: cleanDisplayList(q.options, 4),
+          moduleTitle: cleanDisplayText(q.moduleTitle) || topic,
+          hint: cleanDisplayText(q.hint),
+        })),
+      });
+    } catch (error) {
+      handleGeminiError(res, error, 'Final exam generation error.');
+    }
+  });
+
+  // Module 5: Final Comprehensive AI Skill Exam Evaluation & Certificate Commendation
+  app.post('/api/skill-tree/final-exam/evaluate', async (req: Request, res: Response) => {
+    try {
+      const {
+        topic,
+        estimatedLevel = 'Intermediate',
+        questions = [],
+        userAnswers = [],
+      } = req.body as {
+        topic: string;
+        estimatedLevel?: string;
+        questions: Array<{ id: string; prompt: string; moduleTitle?: string }>;
+        userAnswers: Array<{ questionId: string; answer: string }>;
+      };
+
+      if (!topic || !Array.isArray(questions) || questions.length === 0) {
+        res.status(400).json({ error: 'Final exam questions and answers are required.' });
+        return;
+      }
+
+      const answerMap = new Map(userAnswers.map((a) => [a.questionId, a.answer]));
+      const qaText = questions
+        .map(
+          (q, idx) =>
+            `Question ${idx + 1} (${q.id} - ${q.moduleTitle || topic}): ${q.prompt}\nLearner Answer: ${
+              answerMap.get(q.id) || 'No answer provided'
+            }`
+        )
+        .join('\n\n');
+
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: MODEL_NAME,
+        contents: `Evaluate this Final Certification Exam for "${topic}" (${estimatedLevel} level):
+
+${qaText}
+
+Grading rules:
+- Grade each question accurately (correct: true/false) with a clear 1-sentence feedback note.
+- Compute overall score from 0 to 100.
+- Set passed to true if score is 70 or higher.
+- Write concise overall feedback (2 sentences max) explaining performance and any weak areas.
+- Write strengthSummary: a polished 1-sentence academic commendation describing what the learner mastered (for display on their Certificate of Mastery).
+- Never include *, &, ^, $, #, or @ characters anywhere; write "and" instead of "&".`,
+        config: {
+          systemInstruction:
+            'You are a certification board examiner grading a comprehensive final skill exam accurately and encouragingly. Never output *, &, ^, $, #, or @ characters.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              score: { type: Type.INTEGER },
+              passed: { type: Type.BOOLEAN },
+              feedback: { type: Type.STRING },
+              strengthSummary: { type: Type.STRING },
+              questionResults: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    questionId: { type: Type.STRING },
+                    correct: { type: Type.BOOLEAN },
+                    feedback: { type: Type.STRING },
+                  },
+                  required: ['questionId', 'correct', 'feedback'],
+                },
+              },
+            },
+            required: ['score', 'passed', 'feedback', 'strengthSummary', 'questionResults'],
+          },
+        },
+      });
+
+      const parsed = safeJsonParse<{
+        score: number;
+        passed: boolean;
+        feedback: string;
+        strengthSummary: string;
+        questionResults: Array<{ questionId: string; correct: boolean; feedback: string }>;
+      } | null>(response.text, null);
+
+      if (!parsed) {
+        res.status(502).json({ error: 'Failed to evaluate final certification exam.' });
+        return;
+      }
+
+      const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)));
+      const passed = score >= 70;
+      const pointsAwarded = passed ? score * 3 : Math.max(25, Math.round(score * 0.5));
+
+      res.json({
+        score,
+        passed,
+        pointsAwarded,
+        feedback: cleanDisplayText(parsed.feedback),
+        strengthSummary:
+          cleanDisplayText(parsed.strengthSummary) ||
+          `Demonstrated applied mastery across all modules in ${cleanDisplayText(topic)}.`,
+        completedAtIso: new Date().toISOString(),
+        questionResults: (parsed.questionResults || []).slice(0, 6).map((qr, idx) => ({
+          questionId: cleanDisplayText(qr.questionId) || questions[idx]?.id || `f${idx + 1}`,
+          correct: Boolean(qr.correct),
+          feedback: cleanDisplayText(qr.feedback),
+        })),
+      });
+    } catch (error) {
+      handleGeminiError(res, error, 'Final exam evaluation error.');
     }
   });
 

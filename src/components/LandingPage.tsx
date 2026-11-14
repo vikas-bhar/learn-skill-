@@ -12,14 +12,32 @@ import {
   TrendingUp,
   Sun,
   Moon,
+  LogIn,
+  LogOut,
+  Loader2,
+  AlertTriangle,
+  LayoutDashboard,
+  X,
 } from 'lucide-react';
+import { User } from 'firebase/auth';
+import { SavedLearningPath } from '../lib/learningStore';
 import { SkillPathLogo } from './SkillPathLogo';
 
 interface LandingPageProps {
   isDark: boolean;
+  user: User | null;
+  authReady: boolean;
+  authLoading: boolean;
+  authError: string | null;
+  savedPaths: SavedLearningPath[];
   onToggleTheme: () => void;
   onStartSetup: (presetTopic?: string) => void;
+  onEnterDemoSetup: (presetTopic?: string) => void;
   onTryDemo: () => void;
+  onSignIn: () => Promise<boolean>;
+  onSignOut: () => Promise<void>;
+  onOpenSavedPath: (path: SavedLearningPath) => void;
+  onClearAuthError: () => void;
 }
 
 const EXPLORE_SKILLS = [
@@ -70,10 +88,32 @@ const FEATURES = [
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   isDark,
+  user,
+  authReady,
+  authLoading,
+  authError,
+  savedPaths,
   onToggleTheme,
   onStartSetup,
+  onEnterDemoSetup,
   onTryDemo,
+  onSignIn,
+  onSignOut,
+  onOpenSavedPath,
+  onClearAuthError,
 }) => {
+  const [pendingTopic, setPendingTopic] = React.useState<string | undefined>(undefined);
+  const [showModeModal, setShowModeModal] = React.useState(false);
+  const firstName = user?.displayName?.split(' ')[0] || 'Learner';
+
+  const handleRequestStart = (presetTopic?: string) => {
+    if (user) {
+      onStartSetup(presetTopic);
+      return;
+    }
+    setPendingTopic(presetTopic);
+    setShowModeModal(true);
+  };
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1020] text-slate-900 dark:text-[#F8FAFC] relative overflow-x-hidden">
       {/* Subtle architectural grid & indigo radial backdrop */}
@@ -121,11 +161,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               onClick={onTryDemo}
               className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Try Demo
+              Demo Mode
             </button>
           </nav>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={onToggleTheme}
@@ -135,9 +175,66 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             >
               {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
+
+            {authReady && user ? (
+              <div className="flex items-center gap-2">
+                {savedPaths.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSavedPath(savedPaths[0])}
+                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-[#F8FAFC] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 text-[#4D8DFF]" />
+                    <span>My Roadmap</span>
+                  </button>
+                )}
+                <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-[10px] bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554]">
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={firstName}
+                      referrerPolicy="no-referrer"
+                      className="w-5 h-5 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-gradient-to-br from-[#6D5DFB] to-[#4D8DFF] text-white text-[10px] font-bold flex items-center justify-center">
+                      {firstName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="text-xs font-medium text-slate-800 dark:text-[#F8FAFC] max-w-[100px] truncate">
+                    {firstName}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onSignOut()}
+                  disabled={authLoading}
+                  title="Sign out"
+                  aria-label="Sign out"
+                  className="p-2 rounded-[10px] text-slate-600 dark:text-[#AAB4C8] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#17213A] border border-transparent hover:border-slate-200 dark:hover:border-[#273554] transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void onSignIn()}
+                disabled={!authReady || authLoading}
+                className="px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 dark:text-[#F8FAFC] bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-[10px] transition-all inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#6D5DFB]" />
+                ) : (
+                  <LogIn className="w-3.5 h-3.5 text-[#4D8DFF]" />
+                )}
+                <span>Sign In</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={() => onStartSetup()}
+              onClick={() => handleRequestStart()}
               className="px-4 py-2 text-sm font-semibold text-white rounded-[10px] bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] hover:shadow-[0_0_24px_rgba(109,93,251,0.45)] transition-all whitespace-nowrap shrink-0 cursor-pointer"
             >
               Build My Path
@@ -145,6 +242,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         </div>
       </header>
+
+      {authError && (
+        <div className="max-w-[1280px] mx-auto px-6 pt-4 relative z-20">
+          <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-center justify-between gap-3 text-xs text-rose-800 dark:text-[#FB7185]">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{authError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onClearAuthError}
+              className="font-semibold hover:underline shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       <main id="top" className="relative z-10">
         {/* Hero Section */}
@@ -171,7 +286,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <div className="flex flex-wrap items-center gap-4 pt-1">
                 <button
                   type="button"
-                  onClick={() => onStartSetup()}
+                  onClick={() => handleRequestStart()}
                   className="px-6 py-3.5 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] hover:shadow-[0_0_28px_rgba(109,93,251,0.5)] transition-all inline-flex items-center gap-2 whitespace-nowrap cursor-pointer"
                 >
                   <span>Build My Learning Path</span>
@@ -183,7 +298,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   className="px-5 py-3.5 text-sm font-semibold text-slate-800 dark:text-[#F8FAFC] bg-white dark:bg-[#11182B] border border-slate-200 dark:border-white/10 hover:border-[#6D5DFB]/50 rounded-xl transition-all inline-flex items-center gap-2 whitespace-nowrap cursor-pointer"
                 >
                   <Play className="w-4 h-4 text-[#4D8DFF]" />
-                  <span>Explore Interactive Demo</span>
+                  <span>Demo Mode (No Sign-In)</span>
                 </button>
               </div>
 
@@ -306,7 +421,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                       Current Lesson · 45 min
                     </p>
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      Functions & Return Scope
+                      Functions and Return Scope
                     </p>
                     <div className="w-full h-1.5 bg-slate-200 dark:bg-[#0B1020] rounded-full overflow-hidden">
                       <div className="h-full w-2/3 bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] rounded-full" />
@@ -330,6 +445,63 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
           </div>
+
+          {user && savedPaths.length > 0 && (
+            <div className="mt-12 bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-[#6D5DFB] dark:text-[#A78BFA]">
+                    Welcome back, {firstName}
+                  </p>
+                  <h2 className="font-display text-lg font-semibold text-slate-900 dark:text-[#F8FAFC]">
+                    Continue your saved learning roadmaps
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onStartSetup()}
+                  className="text-xs font-semibold text-[#4D8DFF] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Start a new track</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {savedPaths.slice(0, 3).map((path) => {
+                  const totalNodes = path.skillTree.nodes.length;
+                  const masteredNodes = path.skillTree.nodes.filter((n) => n.status === 'mastered').length;
+                  const pct = totalNodes > 0 ? Math.round((masteredNodes / totalNodes) * 100) : 0;
+                  return (
+                    <button
+                      key={path.id}
+                      type="button"
+                      onClick={() => onOpenSavedPath(path)}
+                      className="text-left p-4 rounded-xl bg-slate-50 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 transition-all space-y-2.5 cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-display text-sm font-semibold text-slate-900 dark:text-white group-hover:text-[#6D5DFB] dark:group-hover:text-[#A78BFA] truncate">
+                          {path.skillTree.topic}
+                        </span>
+                        <span className="font-mono text-xs font-semibold text-[#34D399] tabular-nums">
+                          {pct}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-[#AAB4C8] line-clamp-1">
+                        {path.profile.goal}
+                      </p>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-[#73809B]">
+                        <span>{path.profile.estimatedLevel}</span>
+                        <span className="inline-flex items-center gap-1 text-[#4D8DFF] font-medium">
+                          <span>Resume</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* How It Works Section */}
@@ -398,7 +570,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => onStartSetup()}
+              onClick={() => handleRequestStart()}
               className="text-sm font-semibold text-[#6D5DFB] dark:text-[#A78BFA] hover:underline inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span>Browse all topics</span>
@@ -411,7 +583,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <button
                 key={skill.name}
                 type="button"
-                onClick={() => onStartSetup(skill.name)}
+                onClick={() => handleRequestStart(skill.name)}
                 className="text-left bg-white dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/60 rounded-2xl p-6 transition-all hover:-translate-y-0.5 cursor-pointer group"
               >
                 <h3 className="font-display text-base font-semibold text-slate-900 dark:text-[#F8FAFC] group-hover:text-[#6D5DFB] dark:group-hover:text-[#A78BFA] transition-colors mb-2">
@@ -479,7 +651,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="relative pt-2 flex flex-wrap items-center justify-center gap-4">
               <button
                 type="button"
-                onClick={() => onStartSetup()}
+                onClick={() => handleRequestStart()}
                 className="px-7 py-3.5 text-sm font-semibold text-white rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] hover:shadow-[0_0_30px_rgba(109,93,251,0.5)] transition-all inline-flex items-center gap-2 cursor-pointer"
               >
                 <span>Create My Learning Path</span>
@@ -496,6 +668,83 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <p>Adaptive assessment, interactive skill trees, and guided study plans.</p>
         </div>
       </footer>
+
+      {showModeModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mode-dialog-title"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="max-w-md w-full bg-white dark:bg-[#11182B] border border-slate-200 dark:border-[#273554] rounded-2xl p-6 space-y-5 shadow-2xl animate-fade-up">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2
+                  id="mode-dialog-title"
+                  className="font-display text-lg font-bold text-slate-900 dark:text-white"
+                >
+                  Choose how to continue
+                </h2>
+                <p className="text-xs text-slate-600 dark:text-[#AAB4C8] mt-1">
+                  Sign in with Google to save real roadmaps and progress to your account, or explore Demo Mode without signing in.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowModeModal(false)}
+                aria-label="Close dialog"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                disabled={authLoading}
+                onClick={() => {
+                  void (async () => {
+                    const ok = await onSignIn();
+                    if (ok) {
+                      setShowModeModal(false);
+                      onStartSetup(pendingTopic);
+                    }
+                  })();
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF] hover:from-[#5B4CF2] hover:to-[#4D8DFF] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <LogIn className="w-4 h-4" />
+                )}
+                <span>Sign in with Google (Real Cloud Sync)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModeModal(false);
+                  if (pendingTopic) {
+                    onEnterDemoSetup(pendingTopic);
+                  } else {
+                    onTryDemo();
+                  }
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-slate-100 dark:bg-[#17213A] border border-slate-200 dark:border-[#273554] hover:border-[#6D5DFB]/50 text-slate-800 dark:text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Play className="w-4 h-4 text-[#4D8DFF]" />
+                <span>
+                  {pendingTopic
+                    ? `Try ${pendingTopic} in Demo Mode (No Sign-In)`
+                    : 'Open Demo Mode (No Sign-In)'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

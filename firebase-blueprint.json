@@ -1,0 +1,239 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Minimal non-PII user account anchor used for relational ownership checks.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the account anchor was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the account anchor was last updated."
+        }
+      },
+      "required": ["uid", "createdAt", "updatedAt"]
+    },
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Isolated PII profile document and learner score metrics stored under users/{userId}/private/profile.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified email address from Google authentication.",
+          "minLength": 3,
+          "maxLength": 320
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Learner display name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Profile avatar URL or empty string.",
+          "maxLength": 1024
+        },
+        "totalScore": {
+          "type": "number",
+          "description": "Cumulative AI assessment score points earned across videos and final exams (0 to 1000000)."
+        },
+        "testsCompleted": {
+          "type": "number",
+          "description": "Total number of AI assessments completed (0 to 10000)."
+        },
+        "videosCompleted": {
+          "type": "number",
+          "description": "Total number of learning videos completed with an AI test (0 to 10000)."
+        },
+        "certificatesEarned": {
+          "type": "number",
+          "description": "Total number of skill mastery certificates earned (0 to 1000)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": ["uid", "email", "displayName", "photoUrl", "createdAt", "updatedAt"]
+    },
+    "LearningPath": {
+      "title": "LearningPath",
+      "description": "Personalized adaptive learning roadmap, diagnostic summary, skill tree, 7-day study plan, bookmarks, video test scores, final exam, and mastery certificate.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Learning path identifier matching the Firestore document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "topic": {
+          "type": "string",
+          "description": "Target skill or subject name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "goal": {
+          "type": "string",
+          "description": "Learner goal for this track.",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "pace": {
+          "type": "string",
+          "description": "Weekly study cadence.",
+          "enum": ["casual", "consistent", "intensive"]
+        },
+        "dailyMinutes": {
+          "type": "number",
+          "description": "Daily focus budget in minutes (30, 45, 60, or 120)."
+        },
+        "estimatedLevel": {
+          "type": "string",
+          "description": "Calibrated learner level.",
+          "enum": ["Unassessed", "Beginner", "Intermediate", "Advanced"]
+        },
+        "confidenceScore": {
+          "type": "number",
+          "description": "Diagnostic calibration score from 0 to 100."
+        },
+        "strengths": {
+          "type": "array",
+          "description": "Bounded list of up to 12 detected strengths."
+        },
+        "knowledgeGaps": {
+          "type": "array",
+          "description": "Bounded list of up to 12 detected focus areas."
+        },
+        "selectedNodeId": {
+          "type": "string",
+          "description": "Currently selected skill node ID or empty string.",
+          "maxLength": 128
+        },
+        "recommendedNextId": {
+          "type": "string",
+          "description": "Recommended next skill node ID or empty string.",
+          "maxLength": 128
+        },
+        "nodes": {
+          "type": "array",
+          "description": "Bounded list of up to 25 skill tree nodes."
+        },
+        "edges": {
+          "type": "array",
+          "description": "Bounded list of up to 60 prerequisite edges."
+        },
+        "studyPlan": {
+          "type": "array",
+          "description": "Bounded list of up to 14 daily study plan entries."
+        },
+        "bookmarkedVideoIds": {
+          "type": "array",
+          "description": "Bounded list of up to 50 bookmarked YouTube video IDs."
+        },
+        "latestSynthesis": {
+          "type": "object",
+          "description": "Optional map storing the most recent AI study notes and Mermaid flowchart."
+        },
+        "videoTestResults": {
+          "type": "array",
+          "description": "Bounded list of up to 30 post-video AI test score records."
+        },
+        "finalExam": {
+          "type": "object",
+          "description": "Optional map storing the latest comprehensive final AI exam result."
+        },
+        "certificate": {
+          "type": "object",
+          "description": "Optional immutable map storing the earned certificate of mastery."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the learning path was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the learning path was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "topic",
+        "goal",
+        "pace",
+        "dailyMinutes",
+        "estimatedLevel",
+        "confidenceScore",
+        "strengths",
+        "knowledgeGaps",
+        "selectedNodeId",
+        "recommendedNextId",
+        "nodes",
+        "edges",
+        "studyPlan",
+        "bookmarkedVideoIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Minimal user account anchor documents keyed by Firebase Auth UID."
+    },
+    "/users/{userId}/private/{profileDocId}": {
+      "schema": {
+        "$ref": "#/entities/UserPrivateProfile"
+      },
+      "description": "Private PII user profile and cumulative score metrics stored at profileDocId = 'profile'."
+    },
+    "/users/{userId}/learningPaths/{pathId}": {
+      "schema": {
+        "$ref": "#/entities/LearningPath"
+      },
+      "description": "User-owned adaptive learning roadmaps, progress, study plans, bookmarks, notes, test scores, and certificates."
+    }
+  }
+}

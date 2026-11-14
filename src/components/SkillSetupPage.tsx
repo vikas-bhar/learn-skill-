@@ -20,6 +20,7 @@ interface SkillSetupPageProps {
   initialGoal: string;
   initialPace: LearningPace;
   initialMinutes: DailyStudyMinutes;
+  isDemoMode: boolean;
   onBack: () => void;
   onComplete: (config: {
     topic: string;
@@ -98,14 +99,15 @@ export const SkillSetupPage: React.FC<SkillSetupPageProps> = ({
   initialGoal,
   initialPace,
   initialMinutes,
+  isDemoMode,
   onBack,
   onComplete,
 }) => {
-  const [topic, setTopic] = useState(initialTopic || 'Python');
+  const [topic, setTopic] = useState(initialTopic || '');
   const [selectedPreset, setSelectedPreset] = useState(
-    TOPIC_OPTIONS.some((t) => t.name === initialTopic) ? initialTopic : initialTopic ? 'Custom Topic' : 'Python'
+    TOPIC_OPTIONS.some((t) => t.name === initialTopic) ? initialTopic : initialTopic ? 'Custom Topic' : ''
   );
-  const [goal, setGoal] = useState(initialGoal || 'Build a portfolio project');
+  const [goal, setGoal] = useState(initialGoal || '');
   const [customGoal, setCustomGoal] = useState('');
   const [pace, setPace] = useState<LearningPace>(initialPace || 'consistent');
   const [dailyMinutes, setDailyMinutes] = useState<DailyStudyMinutes>(initialMinutes || 45);
@@ -128,7 +130,11 @@ export const SkillSetupPage: React.FC<SkillSetupPageProps> = ({
       setValidationError('Please enter or select a skill you would like to learn.');
       return;
     }
-    const finalGoal = customGoal.trim() || goal;
+    const finalGoal = customGoal.trim() || goal.trim();
+    if (!finalGoal) {
+      setValidationError('Please select a learning goal or type your own goal.');
+      return;
+    }
     onComplete({
       topic: finalTopic,
       goal: finalGoal,
@@ -143,9 +149,16 @@ export const SkillSetupPage: React.FC<SkillSetupPageProps> = ({
       <header className="border-b border-slate-200 dark:border-[#273554] bg-white/80 dark:bg-[#0B1020]/80 backdrop-blur-md">
         <div className="max-w-[960px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <SkillPathLogo />
-          <span className="text-xs font-medium text-slate-500 dark:text-[#AAB4C8]">
-            Step 1 of 2 · Choose your learning goal
-          </span>
+          <div className="flex items-center gap-3">
+            {isDemoMode && (
+              <span className="px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-[#FBBF24]/15 border border-amber-200 dark:border-[#FBBF24]/30 text-[11px] font-semibold text-amber-800 dark:text-[#FBBF24]">
+                Demo Mode · No Sign-In
+              </span>
+            )}
+            <span className="text-xs font-medium text-slate-500 dark:text-[#AAB4C8]">
+              Step 1 of 2 · Choose your learning goal
+            </span>
+          </div>
         </div>
         <div className="h-0.5 bg-slate-200 dark:bg-[#17213A]">
           <div className="h-full w-1/2 bg-gradient-to-r from-[#6D5DFB] to-[#4D8DFF]" />

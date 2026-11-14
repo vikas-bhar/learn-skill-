@@ -67,6 +67,44 @@ export interface StudyPlanDay {
   completed: boolean;
 }
 
+export interface VideoTestResult {
+  videoId: string;
+  videoTitle: string;
+  nodeId: string;
+  score: number;
+  pointsAwarded: number;
+  passed: boolean;
+  feedback: string;
+  completedAtIso: string;
+}
+
+export interface FinalExamResult {
+  score: number;
+  passed: boolean;
+  pointsAwarded: number;
+  feedback: string;
+  strengthSummary: string;
+  completedAtIso: string;
+}
+
+export interface SkillCertificate {
+  certificateId: string;
+  learnerName: string;
+  topic: string;
+  finalScore: number;
+  totalScore: number;
+  level: LearnerLevel;
+  strengthSummary: string;
+  issuedAtIso: string;
+}
+
+export interface LearnerScoreProfile {
+  totalScore: number;
+  testsCompleted: number;
+  videosCompleted: number;
+  certificatesEarned: number;
+}
+
 export interface SkillTreeData {
   topic: string;
   generatedAt: string;
@@ -86,6 +124,49 @@ export interface MasteryQuestion {
 export interface MasteryEvaluation {
   passed: boolean;
   feedback: string;
+}
+
+export interface VideoQuizQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  conceptTag: string;
+}
+
+export interface VideoQuizPayload {
+  videoId: string;
+  questions: VideoQuizQuestion[];
+}
+
+export interface QuizQuestionFeedback {
+  questionId: string;
+  correct: boolean;
+  feedback: string;
+}
+
+export interface VideoQuizEvaluation {
+  score: number;
+  passed: boolean;
+  pointsAwarded: number;
+  feedback: string;
+  questionResults: QuizQuestionFeedback[];
+}
+
+export interface FinalExamQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  moduleTitle: string;
+  hint: string;
+}
+
+export interface FinalExamPayload {
+  topic: string;
+  questions: FinalExamQuestion[];
+}
+
+export interface FinalExamEvaluation extends FinalExamResult {
+  questionResults: QuizQuestionFeedback[];
 }
 
 export interface VideoResult {
@@ -119,4 +200,4 @@ export interface VideoSynthesis {
 }
 
 export type AppScreen = 'landing' | 'setup' | 'diagnostic' | 'dashboard';
-export type DashboardTab = 'overview' | 'roadmap' | 'notes' | 'videos' | 'plan';
+export type DashboardTab = 'overview' | 'roadmap' | 'notes' | 'videos' | 'plan' | 'certificate';

@@ -84,26 +84,36 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   const buildMarkdown = () => {
     if (!synthesis) return '';
     return [
-      `# ${synthesis.videoTitle}`,
+      synthesis.videoTitle,
+      '========================================',
       '',
       synthesis.executiveSummary,
       '',
-      '## Key Takeaways',
+      'Key Takeaways',
+      '----------------------------------------',
       ...synthesis.keyTakeaways.map((t) => `- ${t}`),
       '',
-      '## Structured Study Notes',
+      'Structured Study Notes',
+      '----------------------------------------',
       ...synthesis.structuredNotes.flatMap((s) => [
-        `### ${s.heading} (${s.timestampHint})`,
+        `${s.heading} (${s.timestampHint})`,
         ...s.bullets.map((b) => `- ${b}`),
         '',
       ]),
       ...(synthesis.commonMistakes?.length
-        ? ['## Common Mistakes', ...synthesis.commonMistakes.map((m) => `- ${m}`), '']
+        ? [
+            'Common Mistakes',
+            '----------------------------------------',
+            ...synthesis.commonMistakes.map((m) => `- ${m}`),
+            '',
+          ]
         : []),
-      ...(synthesis.practiceTask ? ['## Practice Task', synthesis.practiceTask, ''] : []),
-      '```mermaid',
+      ...(synthesis.practiceTask
+        ? ['Practice Task', '----------------------------------------', synthesis.practiceTask, '']
+        : []),
+      'Concept Flowchart (Mermaid)',
+      '----------------------------------------',
       synthesis.mermaidFlowchart,
-      '```',
     ].join('\n');
   };
 
@@ -118,11 +128,11 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
   const handleDownload = () => {
     const md = buildMarkdown();
     if (!md || !synthesis) return;
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([md], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${synthesis.videoId}-study-notes.md`;
+    a.download = `${synthesis.videoId}-study-notes.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -295,7 +305,7 @@ export const StudyNotesView: React.FC<StudyNotesViewProps> = ({
               {/* Highlighted Key Definitions / Takeaways */}
               <div className="space-y-3">
                 <h4 className="font-display text-base font-semibold text-slate-900 dark:text-white">
-                  Key Definitions & Takeaways
+                  Key Definitions and Takeaways
                 </h4>
                 <div className="space-y-2.5">
                   {synthesis.keyTakeaways.map((item, idx) => (

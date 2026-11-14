@@ -3,6 +3,20 @@ import { LandingPage } from './components/LandingPage';
 import { SkillSetupPage } from './components/SkillSetupPage';
 import { DiagnosticAssessmentPage } from './components/DiagnosticAssessmentPage';
 import { DashboardPage } from './components/DashboardPage';
+import { useFirebase } from './context/FirebaseContext';
+import { formatFirebaseUserError } from './lib/firebase';
+import {
+  deleteLearningPathDoc,
+  addProfileScore,
+  SavedLearningPath,
+  saveFinalExamAndCertificate,
+  saveNewLearningPath,
+  updateLearningPathBookmarks,
+  updateLearningPathNotes,
+  updateLearningPathProgress,
+  updateLearningPathStudyPlan,
+  updateLearningPathVideoTests,
+} from './lib/learningStore';
 import {
   DEMO_MESSAGES,
   DEMO_PROFILE,
@@ -16,16 +30,22 @@ import {
   DashboardTab,
   DiagnosticMessage,
   DiagnosticProfile,
+  FinalExamEvaluation,
+  FinalExamResult,
+  LearnerScoreProfile,
   LearningPace,
+  SkillCertificate,
   SkillNode,
   SkillTreeData,
+  VideoQuizEvaluation,
   VideoResult,
   VideoSynthesis,
+  VideoTestResult,
 } from './types/learning';
 
 const INITIAL_PROFILE: DiagnosticProfile = {
-  topic: 'Python',
-  goal: 'Build a portfolio project',
+  topic: '',
+  goal: '',
   pace: 'consistent',
   dailyMinutes: 45,
   estimatedLevel: 'Unassessed',
@@ -41,9 +61,32 @@ function nowLabel(): string {
 }
 
 export default function App() {
+  const {
+    user,
+    authReady,
+    authLoading,
+    authError,
+    savedPaths,
+    scoreProfile: cloudScoreProfile,
+    activePathId,
+    setActivePathId,
+    signInWithGoogle,
+    signOutUser,
+    clearAuthError,
+  } = useFirebase();
+
   const [screen, setScreen] = useState<AppScreen>('landing');
   const [dashboardTab, setDashboardTab] = useState<DashboardTab>('overview');
   const [isDark, setIsDark] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isSavingPath, setIsSavingPath] = useState(false);
+
+  const [localScoreProfile, setLocalScoreProfile] = useState<LearnerScoreProfile>({
+    totalScore: 0,
+    testsCompleted: 0,
+    videosCompleted: 0,
+    certificatesEarned: 0,
+  });
 
   const [profile, setProfile] = useState<DiagnosticProfile>(INITIAL_PROFILE);
   const [messages, setMessages] = useState<DiagnosticMessage[]>([]);
@@ -59,6 +102,11 @@ export default function App() {
   const [bookmarkedIds, setBookmarkedIds] = useState<Record<string, boolean>>({});
   const [synthesis, setSynthesis] = useState<VideoSynthesis | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [videoTestResults, setVideoTestResults] = useState<VideoTestResult[]>([]);
+  const [finalExam, setFinalExam] = useState<FinalExamResult | null>(null);
+  const [certificate, setCertificate] = useState<SkillCertificate | null>(null);
+
+  const activeScoreProfile = user ? cloudScoreProfile : localScoreProfile;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -69,26 +117,110 @@ export default function App() {
     }
   }, [isDark]);
 
+  useEffect(() => {
+    if (user) {
+      setIsDemoMode(false);
+    }
+  }, [user]);
+
   const handleToggleTheme = () => setIsDark((prev) => !prev);
 
+  const handleOpenSavedPath = useCallback(
+    (saved: SavedLearningPath) => {
+      setProfile(saved.profile);
+      setMessages([]);
+      setSkillTree(saved.skillTree);
+      setSelectedNodeId(
+        saved.selectedNodeId ||
+          saved.skillTree.recommendedNextId ||
+          saved.skillTree.nodes[0]?.id ||
+          null
+      );
+      const bookmarkMap: Record<string, boolean> = {};
+      for (const id of saved.bookmarkedVideoIds) {
+        bookmarkMap[id] = true;
+      }
+      setBookmarkedIds(bookmarkMap);
+      setVideos([]);
+      setSelectedVideo(null);
+      setSynthesis(saved.latestSynthesis);
+      setVideoTestResults(saved.videoTestResults || []);
+      setFinalExam(saved.finalExam || null);
+      setCertificate(saved.certificate || null);
+      setActivePathId(saved.id);
+      setIsDemoMode(false);
+      setDiagError(null);
+      setDashboardTab('overview');
+      setScreen('dashboard');
+    },
+    [setActivePathId]
+  );
+
   const handleLaunchDemo = () => {
+    setActivePathId(null);
+    setIsDemoMode(true);
     setProfile(DEMO_PROFILE);
     setMessages(DEMO_MESSAGES);
     setSkillTree(DEMO_SKILL_TREE);
     setSelectedNodeId('n3');
     setVideos(DEMO_VIDEOS);
     setSelectedVideo(DEMO_VIDEOS[0]);
+    setBookmarkedIds({});
     setSynthesis(DEMO_SYNTHESIS);
+    setVideoTestResults([]);
+    setFinalExam(null);
+    setCertificate(null);
+    setLocalScoreProfile({
+      totalScore: 0,
+      testsCompleted: 0,
+      videosCompleted: 0,
+      certificatesEarned: 0,
+    });
     setDiagError(null);
     setDashboardTab('overview');
     setScreen('dashboard');
   };
 
   const handleStartSetup = (presetTopic?: string) => {
-    if (presetTopic) {
-      setProfile((prev) => ({ ...prev, topic: presetTopic }));
-    }
+    setIsDemoMode(!user);
+    setProfile({
+      ...INITIAL_PROFILE,
+      topic: presetTopic || '',
+    });
     setScreen('setup');
+  };
+
+  const handleEnterDemoSetup = (presetTopic?: string) => {
+    setIsDemoMode(true);
+    setProfile({
+      ...INITIAL_PROFILE,
+      topic: presetTopic || '',
+    });
+    setScreen('setup');
+  };
+
+  const handleExitDemo = () => {
+    setIsDemoMode(false);
+    setActivePathId(null);
+    setProfile(INITIAL_PROFILE);
+    setMessages([]);
+    setSkillTree(null);
+    setSelectedNodeId(null);
+    setVideos([]);
+    setSelectedVideo(null);
+    setBookmarkedIds({});
+    setSynthesis(null);
+    setVideoTestResults([]);
+    setFinalExam(null);
+    setCertificate(null);
+    setLocalScoreProfile({
+      totalScore: 0,
+      testsCompleted: 0,
+      videosCompleted: 0,
+      certificatesEarned: 0,
+    });
+    setDiagError(null);
+    setScreen('landing');
   };
 
   const handleCompleteSetup = async (config: {
@@ -109,13 +241,18 @@ export default function App() {
       readyForSkillTree: false,
       turnCount: 0,
     };
+    setActivePathId(null);
     setProfile(freshProfile);
     setMessages([]);
     setSkillTree(null);
     setSelectedNodeId(null);
     setVideos([]);
     setSelectedVideo(null);
+    setBookmarkedIds({});
     setSynthesis(null);
+    setVideoTestResults([]);
+    setFinalExam(null);
+    setCertificate(null);
     setDiagError(null);
     setScreen('diagnostic');
 
@@ -183,17 +320,35 @@ export default function App() {
         if (!res.ok) throw new Error(data.error || 'Failed to build your learning path.');
 
         const tree = data as SkillTreeData;
+        const initialNodeId = tree.recommendedNextId || tree.nodes[0]?.id || null;
         setSkillTree(tree);
-        setSelectedNodeId(tree.recommendedNextId || tree.nodes[0]?.id || null);
+        setSelectedNodeId(initialNodeId);
         setDashboardTab('overview');
         setScreen('dashboard');
+
+        if (user) {
+          try {
+            const newId = await saveNewLearningPath(user.uid, {
+              profile: activeProfile,
+              skillTree: tree,
+              selectedNodeId: initialNodeId,
+              bookmarkedIds: {},
+              synthesis: null,
+            });
+            setActivePathId(newId);
+          } catch (saveErr) {
+            setDiagError(formatFirebaseUserError(saveErr));
+          }
+        } else {
+          setActivePathId(null);
+        }
       } catch (err) {
         setDiagError(err instanceof Error ? err.message : 'Failed to build skill tree.');
       } finally {
         setTreeLoading(false);
       }
     },
-    [profile, messages]
+    [profile, messages, user, setActivePathId]
   );
 
   const handleSendDiagnosticMessage = async (userText: string) => {
@@ -253,35 +408,92 @@ export default function App() {
     }
   };
 
+  const handleSaveCurrentPathForUser = useCallback(
+    async (targetUserId: string) => {
+      if (!skillTree) return;
+      setIsSavingPath(true);
+      setDiagError(null);
+      try {
+        const newId = await saveNewLearningPath(targetUserId, {
+          profile,
+          skillTree,
+          selectedNodeId,
+          bookmarkedIds,
+          synthesis,
+          videoTestResults,
+        });
+        setActivePathId(newId);
+      } catch (err) {
+        setDiagError(formatFirebaseUserError(err));
+      } finally {
+        setIsSavingPath(false);
+      }
+    },
+    [skillTree, profile, selectedNodeId, bookmarkedIds, synthesis, videoTestResults, setActivePathId]
+  );
+
+  const handleSaveCurrentPath = async () => {
+    if (!user) return;
+    await handleSaveCurrentPathForUser(user.uid);
+  };
+
+  const handleSignInAndSave = async () => {
+    const signedInUser = await signInWithGoogle();
+    if (signedInUser && skillTree && !activePathId) {
+      await handleSaveCurrentPathForUser(signedInUser.uid);
+    }
+  };
+
+  const handleDeleteSavedPath = async (pathId: string) => {
+    if (!user) return;
+    try {
+      await deleteLearningPathDoc(user.uid, pathId);
+      if (pathId === activePathId) {
+        setActivePathId(null);
+      }
+    } catch (err) {
+      setDiagError(formatFirebaseUserError(err));
+    }
+  };
+
   const handleUpdateNodeStatus = useCallback(
     (nodeId: string, passed: boolean) => {
-      setSkillTree((prev) => {
-        if (!prev) return prev;
-        const updated = prev.nodes.map((n) =>
-          n.id === nodeId
-            ? { ...n, status: passed ? ('mastered' as const) : ('needs_review' as const) }
-            : n
-        );
-        const masteredSet = new Set(
-          updated.filter((n) => n.status === 'mastered').map((n) => n.id)
-        );
-        const unlocked = updated.map((n) =>
-          n.status === 'locked' && n.prerequisites.every((pid) => masteredSet.has(pid))
-            ? { ...n, status: 'ready' as const }
-            : n
-        );
-        const nextRec =
-          unlocked.find((n) => n.status === 'ready')?.id ||
-          unlocked.find((n) => n.status === 'needs_review')?.id ||
-          prev.recommendedNextId;
-        return {
-          ...prev,
-          nodes: unlocked,
-          recommendedNextId: nextRec,
-        };
+      if (!skillTree) return;
+      const updated = skillTree.nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, status: passed ? ('mastered' as const) : ('needs_review' as const) }
+          : n
+      );
+      const masteredSet = new Set(
+        updated.filter((n) => n.status === 'mastered').map((n) => n.id)
+      );
+      const unlocked = updated.map((n) =>
+        n.status === 'locked' && n.prerequisites.every((pid) => masteredSet.has(pid))
+          ? { ...n, status: 'ready' as const }
+          : n
+      );
+      const nextRec =
+        unlocked.find((n) => n.status === 'ready')?.id ||
+        unlocked.find((n) => n.status === 'needs_review')?.id ||
+        skillTree.recommendedNextId;
+
+      setSkillTree({
+        ...skillTree,
+        nodes: unlocked,
+        recommendedNextId: nextRec,
       });
+
+      if (user && activePathId) {
+        void updateLearningPathProgress(
+          user.uid,
+          activePathId,
+          unlocked,
+          nextRec,
+          selectedNodeId
+        ).catch((err) => setDiagError(formatFirebaseUserError(err)));
+      }
     },
-    []
+    [skillTree, user, activePathId, selectedNodeId]
   );
 
   const handleGenerateNotesFromVideo = async (
@@ -306,8 +518,17 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not synthesize study notes.');
-      setSynthesis(data as VideoSynthesis);
+      const nextSynthesis = data as VideoSynthesis;
+      setSynthesis(nextSynthesis);
       setDashboardTab('notes');
+
+      if (user && activePathId) {
+        try {
+          await updateLearningPathNotes(user.uid, activePathId, nextSynthesis, selectedNodeId);
+        } catch (saveErr) {
+          setDiagError(formatFirebaseUserError(saveErr));
+        }
+      }
     } catch (err) {
       setDiagError(err instanceof Error ? err.message : 'Failed to synthesize notes.');
     } finally {
@@ -333,7 +554,16 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not generate notes.');
-      setSynthesis(data as VideoSynthesis);
+      const nextSynthesis = data as VideoSynthesis;
+      setSynthesis(nextSynthesis);
+
+      if (user && activePathId) {
+        try {
+          await updateLearningPathNotes(user.uid, activePathId, nextSynthesis, node.id);
+        } catch (saveErr) {
+          setDiagError(formatFirebaseUserError(saveErr));
+        }
+      }
     } catch (err) {
       setDiagError(err instanceof Error ? err.message : 'Note generation failed.');
     } finally {
@@ -342,28 +572,179 @@ export default function App() {
   };
 
   const handleTogglePlanDay = (dayNumber: number) => {
-    setSkillTree((prev) => {
-      if (!prev || !prev.studyPlan) return prev;
-      return {
-        ...prev,
-        studyPlan: prev.studyPlan.map((d) =>
-          d.day === dayNumber ? { ...d, completed: !d.completed } : d
-        ),
-      };
+    if (!skillTree) return;
+    const basePlan =
+      skillTree.studyPlan && skillTree.studyPlan.length > 0
+        ? skillTree.studyPlan
+        : skillTree.nodes.slice(0, 7).map((n, idx) => ({
+            day: idx + 1,
+            dateLabel: idx === 0 ? 'Day 1 · Today' : `Day ${idx + 1}`,
+            moduleId: n.id,
+            taskTitle: n.title,
+            estimatedMinutes: n.estimatedMinutes,
+            motivation: n.whyItMatters || n.summary,
+            completed: n.status === 'mastered',
+          }));
+    const updatedPlan = basePlan.map((d) =>
+      d.day === dayNumber ? { ...d, completed: !d.completed } : d
+    );
+    setSkillTree({
+      ...skillTree,
+      studyPlan: updatedPlan,
     });
+
+    if (user && activePathId) {
+      void updateLearningPathStudyPlan(user.uid, activePathId, updatedPlan).catch((err) =>
+        setDiagError(formatFirebaseUserError(err))
+      );
+    }
   };
 
   const handleToggleBookmark = (videoId: string) => {
-    setBookmarkedIds((prev) => ({ ...prev, [videoId]: !prev[videoId] }));
+    const nextBookmarks = { ...bookmarkedIds, [videoId]: !bookmarkedIds[videoId] };
+    setBookmarkedIds(nextBookmarks);
+
+    if (user && activePathId) {
+      void updateLearningPathBookmarks(user.uid, activePathId, nextBookmarks).catch((err) =>
+        setDiagError(formatFirebaseUserError(err))
+      );
+    }
+  };
+
+  const handleVideoTestCompleted = async (
+    video: VideoResult,
+    node: SkillNode | null,
+    evaluation: VideoQuizEvaluation
+  ) => {
+    const alreadyTested = videoTestResults.some((r) => r.videoId === video.videoId);
+    const entry: VideoTestResult = {
+      videoId: video.videoId,
+      videoTitle: video.title,
+      nodeId: node?.id || selectedNodeId || '',
+      score: evaluation.score,
+      pointsAwarded: evaluation.pointsAwarded,
+      passed: evaluation.passed,
+      feedback: evaluation.feedback,
+      completedAtIso: new Date().toISOString(),
+    };
+    const nextResults = [
+      entry,
+      ...videoTestResults.filter((r) => r.videoId !== video.videoId),
+    ].slice(0, 30);
+
+    setVideoTestResults(nextResults);
+
+    if (user) {
+      try {
+        await addProfileScore(user.uid, {
+          scoreDelta: evaluation.pointsAwarded,
+          testsDelta: 1,
+          videosDelta: alreadyTested ? 0 : 1,
+          certificatesDelta: 0,
+        });
+        if (activePathId) {
+          await updateLearningPathVideoTests(user.uid, activePathId, nextResults);
+        }
+      } catch (err) {
+        setDiagError(formatFirebaseUserError(err));
+      }
+    } else {
+      setLocalScoreProfile((prev) => ({
+        ...prev,
+        totalScore: prev.totalScore + evaluation.pointsAwarded,
+        testsCompleted: prev.testsCompleted + 1,
+        videosCompleted: prev.videosCompleted + (alreadyTested ? 0 : 1),
+      }));
+    }
+  };
+
+  const handleFinalExamEvaluated = async (
+    evaluation: FinalExamEvaluation,
+    learnerName: string
+  ) => {
+    if (!skillTree) return;
+
+    const examRecord: FinalExamResult = {
+      score: evaluation.score,
+      passed: evaluation.passed,
+      pointsAwarded: evaluation.pointsAwarded,
+      feedback: evaluation.feedback,
+      strengthSummary: evaluation.strengthSummary,
+      completedAtIso: evaluation.completedAtIso || new Date().toISOString(),
+    };
+    setFinalExam(examRecord);
+
+    const updatedTotalScore = activeScoreProfile.totalScore + evaluation.pointsAwarded;
+    const isNewCertificate = evaluation.passed && !certificate;
+    const issuedCertificate: SkillCertificate | null = isNewCertificate
+      ? {
+          certificateId: `SP-${Date.now().toString(36).toUpperCase()}`,
+          learnerName,
+          topic: skillTree.topic,
+          finalScore: evaluation.score,
+          totalScore: updatedTotalScore,
+          level: profile.estimatedLevel,
+          strengthSummary: evaluation.strengthSummary,
+          issuedAtIso: examRecord.completedAtIso,
+        }
+      : certificate;
+
+    if (issuedCertificate && isNewCertificate) {
+      setCertificate(issuedCertificate);
+    }
+
+    if (user) {
+      try {
+        await addProfileScore(user.uid, {
+          scoreDelta: evaluation.pointsAwarded,
+          testsDelta: 1,
+          videosDelta: 0,
+          certificatesDelta: isNewCertificate ? 1 : 0,
+        });
+        if (activePathId) {
+          await saveFinalExamAndCertificate(
+            user.uid,
+            activePathId,
+            examRecord,
+            isNewCertificate ? issuedCertificate : null
+          );
+        }
+      } catch (err) {
+        setDiagError(formatFirebaseUserError(err));
+      }
+    } else {
+      setLocalScoreProfile((prev) => ({
+        ...prev,
+        totalScore: prev.totalScore + evaluation.pointsAwarded,
+        testsCompleted: prev.testsCompleted + 1,
+        certificatesEarned: prev.certificatesEarned + (isNewCertificate ? 1 : 0),
+      }));
+    }
   };
 
   if (screen === 'landing') {
     return (
       <LandingPage
         isDark={isDark}
+        user={user}
+        authReady={authReady}
+        authLoading={authLoading}
+        authError={authError}
+        savedPaths={savedPaths}
         onToggleTheme={handleToggleTheme}
         onStartSetup={handleStartSetup}
+        onEnterDemoSetup={handleEnterDemoSetup}
         onTryDemo={handleLaunchDemo}
+        onSignIn={async () => {
+          const signedIn = await signInWithGoogle();
+          return Boolean(signedIn);
+        }}
+        onSignOut={async () => {
+          await signOutUser();
+          handleExitDemo();
+        }}
+        onOpenSavedPath={handleOpenSavedPath}
+        onClearAuthError={clearAuthError}
       />
     );
   }
@@ -375,6 +756,7 @@ export default function App() {
         initialGoal={profile.goal}
         initialPace={profile.pace}
         initialMinutes={profile.dailyMinutes}
+        isDemoMode={isDemoMode && !user}
         onBack={() => setScreen('landing')}
         onComplete={(cfg) => void handleCompleteSetup(cfg)}
       />
@@ -410,10 +792,24 @@ export default function App() {
       synthesis={synthesis}
       isSummarizing={isSummarizing}
       error={diagError}
+      user={user}
+      authReady={authReady}
+      authLoading={authLoading}
+      authError={authError}
+      savedPaths={savedPaths}
+      activePathId={activePathId}
+      isSavingPath={isSavingPath}
+      isDemoMode={isDemoMode && !user}
+      scoreProfile={activeScoreProfile}
+      videoTestResults={videoTestResults}
+      finalExam={finalExam}
+      certificate={certificate}
       onSelectTab={setDashboardTab}
       onToggleTheme={handleToggleTheme}
       onStartNewSkill={() => setScreen('setup')}
       onGoToDiagnostic={() => setScreen('setup')}
+      onGoHome={() => setScreen('landing')}
+      onExitDemo={handleExitDemo}
       onSelectNode={setSelectedNodeId}
       onUpdateNodeStatus={handleUpdateNodeStatus}
       onVideosLoaded={setVideos}
@@ -422,6 +818,17 @@ export default function App() {
       onGenerateNotes={handleGenerateNotesFromVideo}
       onGenerateNotesForNode={handleGenerateNotesForNode}
       onTogglePlanDay={handleTogglePlanDay}
+      onVideoTestCompleted={handleVideoTestCompleted}
+      onFinalExamEvaluated={handleFinalExamEvaluated}
+      onSignInAndSave={handleSignInAndSave}
+      onSignOut={async () => {
+        await signOutUser();
+        handleExitDemo();
+      }}
+      onSaveCurrentPath={handleSaveCurrentPath}
+      onOpenSavedPath={handleOpenSavedPath}
+      onDeleteSavedPath={handleDeleteSavedPath}
+      onClearAuthError={clearAuthError}
     />
   );
 }

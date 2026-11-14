@@ -1,0 +1,286 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Deny all reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function hasUserAccount(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+    }
+
+    function hasUserAccountAfter(userId) {
+      return existsAfter(/databases/$(database)/documents/users/$(userId)) &&
+        getAfter(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserAccount(data, userId) {
+      return data.keys().hasAll(['uid', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'photoUrl', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'photoUrl',
+          'totalScore', 'testsCompleted', 'videosCompleted', 'certificatesEarned',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 320 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.photoUrl is string && data.photoUrl.size() <= 1024 &&
+        (!data.keys().hasAny(['totalScore']) || (data.totalScore is int && data.totalScore >= 0 && data.totalScore <= 1000000)) &&
+        (!data.keys().hasAny(['testsCompleted']) || (data.testsCompleted is int && data.testsCompleted >= 0 && data.testsCompleted <= 10000)) &&
+        (!data.keys().hasAny(['videosCompleted']) || (data.videosCompleted is int && data.videosCompleted >= 0 && data.videosCompleted <= 10000)) &&
+        (!data.keys().hasAny(['certificatesEarned']) || (data.certificatesEarned is int && data.certificatesEarned >= 0 && data.certificatesEarned <= 1000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSynthesisMap(syn) {
+      return syn is map &&
+        syn.keys().hasAll(['videoId', 'videoTitle', 'executiveSummary', 'keyTakeaways', 'structuredNotes', 'mermaidFlowchart', 'studyChecklist']) &&
+        syn.keys().hasOnly(['videoId', 'videoTitle', 'executiveSummary', 'keyTakeaways', 'structuredNotes', 'mermaidFlowchart', 'studyChecklist', 'commonMistakes', 'practiceTask']) &&
+        syn.videoId is string && syn.videoId.size() >= 1 && syn.videoId.size() <= 128 &&
+        syn.videoTitle is string && syn.videoTitle.size() >= 1 && syn.videoTitle.size() <= 240 &&
+        syn.executiveSummary is string && syn.executiveSummary.size() <= 4000 &&
+        syn.keyTakeaways is list && syn.keyTakeaways.size() <= 15 &&
+        (syn.keyTakeaways.size() == 0 || syn.keyTakeaways[0] is string) &&
+        syn.structuredNotes is list && syn.structuredNotes.size() <= 15 &&
+        (syn.structuredNotes.size() == 0 || syn.structuredNotes[0] is map) &&
+        syn.mermaidFlowchart is string && syn.mermaidFlowchart.size() <= 8000 &&
+        syn.studyChecklist is list && syn.studyChecklist.size() <= 15 &&
+        (syn.studyChecklist.size() == 0 || syn.studyChecklist[0] is string) &&
+        (!syn.keys().hasAny(['commonMistakes']) || (
+          syn.commonMistakes is list && syn.commonMistakes.size() <= 15 &&
+          (syn.commonMistakes.size() == 0 || syn.commonMistakes[0] is string)
+        )) &&
+        (!syn.keys().hasAny(['practiceTask']) || (
+          syn.practiceTask is string && syn.practiceTask.size() <= 2000
+        ));
+    }
+
+    function isValidFinalExamMap(exam) {
+      return exam is map &&
+        exam.keys().hasAll(['score', 'passed', 'pointsAwarded', 'feedback', 'strengthSummary', 'completedAtIso']) &&
+        exam.keys().hasOnly(['score', 'passed', 'pointsAwarded', 'feedback', 'strengthSummary', 'completedAtIso']) &&
+        exam.score is int && exam.score >= 0 && exam.score <= 100 &&
+        exam.passed is bool &&
+        exam.pointsAwarded is int && exam.pointsAwarded >= 0 && exam.pointsAwarded <= 1000 &&
+        exam.feedback is string && exam.feedback.size() <= 2000 &&
+        exam.strengthSummary is string && exam.strengthSummary.size() <= 500 &&
+        exam.completedAtIso is string && exam.completedAtIso.size() >= 4 && exam.completedAtIso.size() <= 64;
+    }
+
+    function isValidCertificateMap(cert) {
+      return cert is map &&
+        cert.keys().hasAll(['certificateId', 'learnerName', 'topic', 'finalScore', 'totalScore', 'level', 'strengthSummary', 'issuedAtIso']) &&
+        cert.keys().hasOnly(['certificateId', 'learnerName', 'topic', 'finalScore', 'totalScore', 'level', 'strengthSummary', 'issuedAtIso']) &&
+        isValidId(cert.certificateId) &&
+        cert.learnerName is string && cert.learnerName.size() >= 1 && cert.learnerName.size() <= 120 &&
+        cert.topic is string && cert.topic.size() >= 1 && cert.topic.size() <= 120 &&
+        cert.finalScore is int && cert.finalScore >= 0 && cert.finalScore <= 100 &&
+        cert.totalScore is int && cert.totalScore >= 0 && cert.totalScore <= 1000000 &&
+        cert.level in ['Unassessed', 'Beginner', 'Intermediate', 'Advanced'] &&
+        cert.strengthSummary is string && cert.strengthSummary.size() <= 500 &&
+        cert.issuedAtIso is string && cert.issuedAtIso.size() >= 4 && cert.issuedAtIso.size() <= 64;
+    }
+
+    function isValidLearningPath(data, userId, pathId) {
+      return data.keys().hasAll([
+          'id', 'userId', 'topic', 'goal', 'pace', 'dailyMinutes',
+          'estimatedLevel', 'confidenceScore', 'strengths', 'knowledgeGaps',
+          'selectedNodeId', 'recommendedNextId', 'nodes', 'edges',
+          'studyPlan', 'bookmarkedVideoIds', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'topic', 'goal', 'pace', 'dailyMinutes',
+          'estimatedLevel', 'confidenceScore', 'strengths', 'knowledgeGaps',
+          'selectedNodeId', 'recommendedNextId', 'nodes', 'edges',
+          'studyPlan', 'bookmarkedVideoIds', 'latestSynthesis',
+          'videoTestResults', 'finalExam', 'certificate',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.id == pathId &&
+        isValidId(data.userId) &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 120 &&
+        data.goal is string && data.goal.size() >= 1 && data.goal.size() <= 240 &&
+        data.pace in ['casual', 'consistent', 'intensive'] &&
+        data.dailyMinutes in [30, 45, 60, 120] &&
+        data.estimatedLevel in ['Unassessed', 'Beginner', 'Intermediate', 'Advanced'] &&
+        (data.confidenceScore is int || data.confidenceScore is float) &&
+        data.confidenceScore >= 0 && data.confidenceScore <= 100 &&
+        data.strengths is list && data.strengths.size() <= 12 &&
+        (data.strengths.size() == 0 || data.strengths[0] is string) &&
+        data.knowledgeGaps is list && data.knowledgeGaps.size() <= 12 &&
+        (data.knowledgeGaps.size() == 0 || data.knowledgeGaps[0] is string) &&
+        data.selectedNodeId is string && data.selectedNodeId.size() <= 128 &&
+        data.recommendedNextId is string && data.recommendedNextId.size() <= 128 &&
+        data.nodes is list && data.nodes.size() <= 25 &&
+        (data.nodes.size() == 0 || data.nodes[0] is map) &&
+        data.edges is list && data.edges.size() <= 60 &&
+        (data.edges.size() == 0 || data.edges[0] is map) &&
+        data.studyPlan is list && data.studyPlan.size() <= 14 &&
+        (data.studyPlan.size() == 0 || data.studyPlan[0] is map) &&
+        data.bookmarkedVideoIds is list && data.bookmarkedVideoIds.size() <= 50 &&
+        (data.bookmarkedVideoIds.size() == 0 || data.bookmarkedVideoIds[0] is string) &&
+        (!data.keys().hasAny(['latestSynthesis']) || isValidSynthesisMap(data.latestSynthesis)) &&
+        (!data.keys().hasAny(['videoTestResults']) || (
+          data.videoTestResults is list && data.videoTestResults.size() <= 30 &&
+          (data.videoTestResults.size() == 0 || data.videoTestResults[0] is map)
+        )) &&
+        (!data.keys().hasAny(['finalExam']) || isValidFinalExamMap(data.finalExam)) &&
+        (!data.keys().hasAny(['certificate']) || isValidCertificateMap(data.certificate)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+
+    // Master User Anchor (non-PII)
+    match /users/{userId} {
+      allow get: if isEmailVerified() && isOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isEmailVerified() &&
+        isOwner(userId) &&
+        isValidId(userId) &&
+        isValidUserAccount(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isEmailVerified() &&
+        isOwner(userId) &&
+        isValidId(userId) &&
+        isValidUserAccount(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['updatedAt']);
+      allow delete: if false;
+
+      // Split Collection: Isolated Private PII Profile & Cumulative Score Metrics
+      match /private/{profileDocId} {
+        allow get: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          profileDocId == 'profile' &&
+          hasUserAccount(userId);
+        allow list: if false;
+        allow create: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          profileDocId == 'profile' &&
+          isValidUserPrivateProfile(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          hasUserAccountAfter(userId);
+        allow update: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          profileDocId == 'profile' &&
+          isValidUserPrivateProfile(incoming(), userId) &&
+          hasUserAccount(userId) &&
+          incoming().uid == existing().uid &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            // Action: Sync Google identity fields
+            incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoUrl', 'updatedAt']) ||
+            // Action: Add AI test / video / certificate score to profile
+            incoming().diff(existing()).affectedKeys().hasOnly(['totalScore', 'testsCompleted', 'videosCompleted', 'certificatesEarned', 'updatedAt'])
+          );
+        allow delete: if false;
+      }
+
+      // Subcollection: User-owned Adaptive Learning Paths
+      match /learningPaths/{pathId} {
+        allow get: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          isValidId(pathId) &&
+          hasUserAccount(userId);
+        allow list: if isEmailVerified() &&
+          isOwner(userId) &&
+          existing().userId == request.auth.uid;
+        allow create: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          isValidId(pathId) &&
+          isValidLearningPath(incoming(), userId, pathId) &&
+          hasUserAccount(userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time;
+        allow update: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          isValidId(pathId) &&
+          isValidLearningPath(incoming(), userId, pathId) &&
+          hasUserAccount(userId) &&
+          incoming().id == existing().id &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          (
+            // Action: Node progress or selection update
+            incoming().diff(existing()).affectedKeys().hasOnly(['nodes', 'recommendedNextId', 'selectedNodeId', 'updatedAt']) ||
+            // Action: 7-Day study plan checklist toggle
+            incoming().diff(existing()).affectedKeys().hasOnly(['studyPlan', 'updatedAt']) ||
+            // Action: Video bookmark toggle
+            incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedVideoIds', 'updatedAt']) ||
+            // Action: Synthesized AI notes update
+            incoming().diff(existing()).affectedKeys().hasOnly(['latestSynthesis', 'selectedNodeId', 'updatedAt']) ||
+            // Action: Post-video AI test score recording
+            incoming().diff(existing()).affectedKeys().hasOnly(['videoTestResults', 'updatedAt']) ||
+            // Action: Final AI exam evaluation and certificate issuance (terminal lock once certified)
+            (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['finalExam', 'certificate', 'updatedAt'])) ||
+            (!existing().keys().hasAny(['certificate']) && incoming().diff(existing()).affectedKeys().hasOnly(['finalExam', 'updatedAt']))
+          );
+        allow delete: if isEmailVerified() &&
+          isOwner(userId) &&
+          isValidId(userId) &&
+          isValidId(pathId) &&
+          hasUserAccount(userId);
+      }
+    }
+  }
+}

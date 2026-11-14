@@ -13,8 +13,8 @@ export const DEMO_PROFILE: DiagnosticProfile = {
   dailyMinutes: 45,
   estimatedLevel: 'Beginner',
   confidenceScore: 84,
-  strengths: ['Variables & Types', 'Basic Loops', 'Conditionals'],
-  knowledgeGaps: ['Functions & Scope', 'List Comprehensions', 'Pandas DataFrames'],
+  strengths: ['Variables and Types', 'Basic Loops', 'Conditionals'],
+  knowledgeGaps: ['Functions and Scope', 'List Comprehensions', 'Pandas DataFrames'],
   readyForSkillTree: true,
   turnCount: 3,
 };
@@ -46,7 +46,7 @@ export const DEMO_MESSAGES: DiagnosticMessage[] = [
       'Clear and honest starting point! You already understand loops and control flow, and clarifying return vs. print will unlock clean modular code and Pandas transformations.',
     timestamp: '09:42 AM',
     assessment: {
-      conceptChecked: 'Functions & Return Scope',
+      conceptChecked: 'Functions and Return Scope',
       verdict: 'partial',
       note: 'Solid grasp of loops; ready to formalize reusable functions.',
     },
@@ -64,7 +64,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
   nodes: [
     {
       id: 'n1',
-      title: 'Variables & Control Flow',
+      title: 'Variables and Control Flow',
       summary: 'Core data types, conditionals, and iteration patterns for data scripts.',
       tier: 1,
       difficulty: 'Beginner',
@@ -84,7 +84,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
     },
     {
       id: 'n2',
-      title: 'Lists & Dictionaries',
+      title: 'Lists and Dictionaries',
       summary: 'Indexing, slicing, and key-value lookups for structured records.',
       tier: 1,
       difficulty: 'Beginner',
@@ -104,7 +104,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
     },
     {
       id: 'n3',
-      title: 'Functions & Modules',
+      title: 'Functions and Modules',
       summary: 'Encapsulate reusable transformations with explicit parameters and return values.',
       tier: 2,
       difficulty: 'Beginner',
@@ -117,13 +117,13 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
         'Import modular utilities across notebook cells',
       ],
       whyItMatters: 'Pandas .apply() and clean data pipelines depend on well-scoped functions.',
-      keyConcepts: ['def & return', 'Parameters', 'Pure Functions', 'Imports'],
+      keyConcepts: ['def and return', 'Parameters', 'Pure Functions', 'Imports'],
       commonMistakes: [
         'Printing inside a function instead of returning the computed value',
-        'Using mutable default arguments like def add(items=[])',
+        'Using mutable default arguments like empty lists',
       ],
       practiceTask:
-        'Write a normalize_price(raw_str) function that strips "$" and returns a rounded float.',
+        'Write a normalize_price(raw_str) function that strips currency text and returns a rounded float.',
       diagnosticRationale: 'Identified as your highest-leverage next step from diagnostic turn 2.',
       youtubeSearchQuery: 'Python functions return vs print tutorial',
     },
@@ -142,14 +142,14 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       ],
       whyItMatters: 'Speeds up feature engineering and column transformations.',
       keyConcepts: ['Mapping', 'Filtering', 'Generator Expressions'],
-      commonMistakes: ['Nesting 3+ loops inside a single unreadable comprehension'],
+      commonMistakes: ['Nesting 3 or more loops inside a single unreadable comprehension'],
       practiceTask: 'Convert a 5-line loop cleaning column headers into one list comprehension.',
-      diagnosticRationale: 'Useful companion skill before vectorized NumPy & Pandas.',
+      diagnosticRationale: 'Useful companion skill before vectorized NumPy and Pandas.',
       youtubeSearchQuery: 'Python list comprehensions explained clearly',
     },
     {
       id: 'n5',
-      title: 'NumPy Arrays & Vectorization',
+      title: 'NumPy Arrays and Vectorization',
       summary: 'Fast numerical computation without slow Python loops.',
       tier: 3,
       difficulty: 'Intermediate',
@@ -164,7 +164,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       keyConcepts: ['ndarrays', 'Broadcasting', 'Axis Aggregations'],
       commonMistakes: ['Confusing axis=0 (rows) with axis=1 (columns)'],
       practiceTask: 'Normalize a 2D array of test scores using column-wise z-scores.',
-      diagnosticRationale: 'Unlocks once Functions & Comprehensions are mastered.',
+      diagnosticRationale: 'Unlocks once Functions and Comprehensions are mastered.',
       youtubeSearchQuery: 'NumPy vectorization broadcasting tutorial',
     },
     {
@@ -181,7 +181,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
         'Handle missing values and compute groupby summaries',
       ],
       whyItMatters: 'The core workbench for real-world data analysis.',
-      keyConcepts: ['DataFrame', '.loc / .iloc', 'groupby()', 'Missing Data'],
+      keyConcepts: ['DataFrame', '.loc and .iloc', 'groupby()', 'Missing Data'],
       commonMistakes: ['Triggering SettingWithCopyWarning on chained indexing'],
       practiceTask: 'Load a CSV dataset and rank top 5 products by monthly revenue.',
       diagnosticRationale: 'Core portfolio milestone built atop Functions.',
@@ -225,7 +225,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       day: 1,
       dateLabel: 'Day 1',
       moduleId: 'n1',
-      taskTitle: 'Review Control Flow & Loop Edge Cases',
+      taskTitle: 'Review Control Flow and Loop Edge Cases',
       estimatedMinutes: 30,
       motivation: 'Quick confidence builder to lock in fundamentals.',
       completed: true,
@@ -243,7 +243,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       day: 3,
       dateLabel: 'Day 3 · Today',
       moduleId: 'n3',
-      taskTitle: 'Functions, Scope & Return Values',
+      taskTitle: 'Functions, Scope and Return Values',
       estimatedMinutes: 45,
       motivation: 'Your highest-leverage unlock for Pandas pipelines.',
       completed: false,
@@ -261,7 +261,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       day: 5,
       dateLabel: 'Day 5',
       moduleId: 'n5',
-      taskTitle: 'NumPy Vectorization & Axis Operations',
+      taskTitle: 'NumPy Vectorization and Axis Operations',
       estimatedMinutes: 45,
       motivation: 'Replace slow loops with fast array math.',
       completed: false,
@@ -270,7 +270,7 @@ export const DEMO_SKILL_TREE: SkillTreeData = {
       day: 6,
       dateLabel: 'Day 6',
       moduleId: 'n6',
-      taskTitle: 'Pandas DataFrame Filtering & GroupBy',
+      taskTitle: 'Pandas DataFrame Filtering and GroupBy',
       estimatedMinutes: 60,
       motivation: 'Analyze your first real multi-column CSV.',
       completed: false,
@@ -292,10 +292,10 @@ export const DEMO_VIDEOS: VideoResult[] = [
     videoId: '9Os0o3wzS_I',
     title: 'Python Tutorial for Beginners 8: Functions',
     channelTitle: 'Corey Schafer',
-    publishedAt: 'Curated Lecture',
+    publishedAt: 'Demo Lecture',
     duration: '21 min',
     description:
-      'Clear walkthrough of function definitions, return statements, *args/**kwargs, and avoiding side-effect traps.',
+      'Clear walkthrough of function definitions, return statements, positional and keyword arguments, and avoiding side-effect traps.',
     thumbnailUrl: 'https://i.ytimg.com/vi/9Os0o3wzS_I/hqdefault.jpg',
     url: 'https://www.youtube.com/watch?v=9Os0o3wzS_I',
     source: 'youtube_api',
@@ -304,7 +304,7 @@ export const DEMO_VIDEOS: VideoResult[] = [
     videoId: '3dt4OGnU5sM',
     title: 'Python Tutorial: Comprehensions - How they work and why you should use them',
     channelTitle: 'Corey Schafer',
-    publishedAt: 'Curated Lecture',
+    publishedAt: 'Demo Lecture',
     duration: '17 min',
     description:
       'Step-by-step transition from standard for-loops to readable list, dictionary, and set comprehensions.',
@@ -316,7 +316,7 @@ export const DEMO_VIDEOS: VideoResult[] = [
     videoId: 'vmEHCJofslg',
     title: 'Complete Python Pandas Data Science Tutorial!',
     channelTitle: 'Keith Galli',
-    publishedAt: 'Curated Lecture',
+    publishedAt: 'Demo Lecture',
     duration: '60 min',
     description:
       'Hands-on dataset loading, filtering, sorting, and groupby aggregations for real-world CSV data.',
@@ -330,12 +330,12 @@ export const DEMO_SYNTHESIS: VideoSynthesis = {
   videoId: '9Os0o3wzS_I',
   videoTitle: 'Python Tutorial for Beginners 8: Functions',
   executiveSummary:
-    'Functions keep data workflows DRY (Don’t Repeat Yourself) by packaging repeatable transformations behind clear inputs and returned outputs—allowing downstream pipelines to compose cleanly.',
+    'Functions keep data workflows DRY (Do Not Repeat Yourself) by packaging repeatable transformations behind clear inputs and returned outputs, allowing downstream pipelines to compose cleanly.',
   keyTakeaways: [
     'Use return to hand computed values back to callers; print only displays text to the console.',
     'Treat functions as black boxes: clear input parameters in, predictable transformed output out.',
-    'Use positional and keyword arguments (*args, **kwargs) to keep helper APIs flexible.',
-    'Never use mutable objects like [] or {} as default parameter values.',
+    'Use positional and keyword arguments to keep helper APIs flexible.',
+    'Never use mutable objects like empty lists or dictionaries as default parameter values.',
   ],
   structuredNotes: [
     {
@@ -351,26 +351,26 @@ export const DEMO_SYNTHESIS: VideoSynthesis = {
       timestampHint: '05:40 – 11:20',
       bullets: [
         'A function without an explicit return yields None automatically.',
-        'Returning a value lets you chain string/list methods or feed directly into Pandas .apply().',
+        'Returning a value lets you chain string or list methods or feed directly into Pandas .apply().',
       ],
     },
     {
-      heading: 'Parameters, Defaults & Unpacking',
+      heading: 'Parameters, Defaults and Unpacking',
       timestampHint: '11:20 – 21:00',
       bullets: [
         'Required positional parameters come before optional keyword parameters.',
-        'Use * and ** to unpack lists and dictionaries into function arguments cleanly.',
+        'Unpack lists and dictionaries cleanly when forwarding options between helper functions.',
       ],
     },
   ],
   mermaidFlowchart: `flowchart TD
   A["Raw Input Data"] --> B["Call Helper Function"]
   B --> C{"Valid Parameters?"}
-  C -->|"Yes"| D["Transform & Compute Result"]
-  C -->|"No"| E["Apply Safe Default / Raise ValueError"]
+  C -->|"Yes"| D["Transform and Compute Result"]
+  C -->|"No"| E["Apply Safe Default or Raise ValueError"]
   D --> F{"Uses return?"}
-  F -->|"Yes"| G["Pass Output to Pandas / Next Step"]
-  F -->|"No"| H["Prints Only & Returns None"]`,
+  F -->|"Yes"| G["Pass Output to Pandas or Next Step"]
+  F -->|"No"| H["Prints Only and Returns None"]`,
   studyChecklist: [
     'Explain why calling print() inside a helper breaks downstream chaining',
     'Write a clean function with 1 required and 1 optional default parameter',
@@ -381,5 +381,5 @@ export const DEMO_SYNTHESIS: VideoSynthesis = {
     'Sharing state via global variables instead of passing arguments explicitly.',
   ],
   practiceTask:
-    'Write a function clean_revenue(value, currency="$") that strips the currency symbol, removes commas, and returns a float.',
+    'Write a function clean_revenue(value, currency="USD") that strips the currency label, removes commas, and returns a float.',
 };
