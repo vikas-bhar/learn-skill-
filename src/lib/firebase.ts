@@ -77,7 +77,10 @@ export function formatFirebaseUserError(error: unknown): string {
     return 'Sign-in popup was blocked by your browser. Please allow popups for this site and try again.';
   }
   if (raw.includes('auth/unauthorized-domain')) {
-    return 'This preview domain is not yet authorized in Firebase Auth settings.';
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    return host
+      ? `Domain "${host}" is not authorized in Firebase Auth settings yet. Add it in Firebase Console Authentication Authorized domains, or continue with Demo Mode.`
+      : 'This preview domain is not yet authorized in Firebase Auth settings. Please continue with Demo Mode or authorize this domain in Firebase Console.';
   }
   try {
     const parsed = JSON.parse(raw) as Partial<FirestoreErrorInfo>;

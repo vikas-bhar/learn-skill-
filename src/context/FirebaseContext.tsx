@@ -104,6 +104,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAuthError(null);
     try {
       const cred = await signInWithPopup(auth, googleProvider);
+      await ensureUserAccount(cred.user);
       return cred.user;
     } catch (err) {
       setAuthError(formatFirebaseUserError(err));

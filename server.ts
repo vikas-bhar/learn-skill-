@@ -88,7 +88,7 @@ function cleanDisplayText(raw: string | undefined): string {
   return raw
     .replace(/\s*&\s*/g, ' and ')
     .replace(/[*^$#@]/g, '')
-    .replace(/\s{2,}/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
@@ -670,10 +670,10 @@ Determine if the learner's answer demonstrates accurate conceptual mastery (pass
           videos: [
             {
               videoId: directId,
-              title: meta?.title || `YouTube Study Video (${directId})`,
-              channelTitle: meta?.author_name || 'YouTube Creator',
+              title: cleanDisplayText(meta?.title) || `YouTube Study Video (${directId})`,
+              channelTitle: cleanDisplayText(meta?.author_name) || 'YouTube Creator',
               publishedAt: 'Direct Link',
-              description: `Direct video loaded for ${skillTitle || topic || 'study'}.`,
+              description: cleanDisplayText(`Direct video loaded for ${skillTitle || topic || 'study'}.`),
               thumbnailUrl: meta?.thumbnail_url || `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
               url: `https://www.youtube.com/watch?v=${directId}`,
               source: 'direct_url',
@@ -716,10 +716,10 @@ Determine if the learner's answer demonstrates accurate conceptual mastery (pass
               const videoId = item.id!.videoId!;
               return {
                 videoId,
-                title: item.snippet?.title || 'Untitled Video',
-                channelTitle: item.snippet?.channelTitle || 'YouTube',
+                title: cleanDisplayText(item.snippet?.title) || 'Untitled Video',
+                channelTitle: cleanDisplayText(item.snippet?.channelTitle) || 'YouTube',
                 publishedAt: item.snippet?.publishedAt ? item.snippet.publishedAt.slice(0, 10) : 'YouTube',
-                description: item.snippet?.description || '',
+                description: cleanDisplayText(item.snippet?.description),
                 thumbnailUrl:
                   item.snippet?.thumbnails?.high?.url ||
                   item.snippet?.thumbnails?.medium?.url ||
@@ -771,10 +771,10 @@ Return exact https://www.youtube.com/watch?v=... URLs with video titles and chan
           if (!meta) return null;
           return {
             videoId,
-            title: meta.title,
-            channelTitle: meta.author_name,
+            title: cleanDisplayText(meta.title) || 'YouTube Study Video',
+            channelTitle: cleanDisplayText(meta.author_name) || 'YouTube',
             publishedAt: 'Verified YouTube',
-            description: `Educational video covering ${skillTitle || searchTerm}.`,
+            description: cleanDisplayText(`Educational video covering ${skillTitle || searchTerm}.`),
             thumbnailUrl: meta.thumbnail_url,
             url: `https://www.youtube.com/watch?v=${videoId}`,
             source: 'gemini_search' as const,

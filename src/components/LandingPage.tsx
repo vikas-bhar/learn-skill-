@@ -699,6 +699,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </button>
             </div>
 
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-[#FB7185]/10 border border-rose-200 dark:border-[#FB7185]/35 flex items-start justify-between gap-2.5 text-xs text-rose-800 dark:text-[#FB7185]">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{authError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClearAuthError}
+                  className="font-semibold hover:underline shrink-0 cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
             <div className="space-y-3">
               <button
                 type="button"
