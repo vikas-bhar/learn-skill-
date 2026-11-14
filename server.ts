@@ -3,7 +3,7 @@ import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { mountApiRoutes } from './server/apiApp';
+import { handleApiHttpRequest } from './api/_lib/router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,7 +26,12 @@ function isHtmlPageRequest(req: Request): boolean {
 
 async function startServer() {
   const app = express();
-  mountApiRoutes(app);
+  app.all('/api', (req: Request, res: Response) => {
+    void handleApiHttpRequest(req, res);
+  });
+  app.all('/api/*', (req: Request, res: Response) => {
+    void handleApiHttpRequest(req, res);
+  });
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

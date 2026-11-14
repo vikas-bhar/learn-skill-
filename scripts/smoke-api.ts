@@ -1,5 +1,5 @@
-import type { Server } from 'http';
-import { createApiApp } from '../server/apiApp';
+import http, { type Server } from 'node:http';
+import { handleApiHttpRequest } from '../api/_lib/router.js';
 
 interface RouteCheck {
   method: 'GET' | 'POST';
@@ -30,9 +30,11 @@ async function main() {
   let baseUrl = (process.env.API_BASE_URL || '').replace(/\/+$/, '');
 
   if (!baseUrl) {
-    const app = createApiApp();
+    const httpServer = http.createServer((req, res) => {
+      void handleApiHttpRequest(req, res);
+    });
     const started = await new Promise<Server>((resolve) => {
-      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+      const s = httpServer.listen(0, '127.0.0.1', () => resolve(s));
     });
     server = started;
     const addr = started.address();
