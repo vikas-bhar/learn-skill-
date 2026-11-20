@@ -5,6 +5,7 @@ import vercelHandler from '../api/index.js';
 import {
   API_ROUTES,
   handleApiHttpRequest,
+  handleGeminiError,
   normalizePathname,
 } from '../api/_lib/router.js';
 
@@ -152,5 +153,47 @@ describe('API router normalization and endpoint handling', () => {
         delete process.env.GEMINI_API_KEY;
       }
     }
+  });
+
+  it('maps upstream 402/429 credit depletion, 403 key errors, and 404 model errors to structured JSON', async () => {
+    await withServer(async (req, res) => {
+      if (req.url === '/402') {
+        handleGeminiError(
+          res,
+          new Error('{"error":{"code":402,"message":"Your prepayment credits are depleted.","status":"RESOURCE_EXHAUSTED"}}'),
+          'Quiz error.'
+        );
+        return;
+      }
+      if (req.url === '/429') {
+        handleGeminiError(res, { status: 429, message: 'RESOURCE_EXHAUSTED' }, 'Quiz error.');
+        return;
+      }
+      if (req.url === '/403') {
+        handleGeminiError(res, new Error('API_KEY_INVALID'), 'Quiz error.');
+        return;
+      }
+      handleGeminiError(res, { status: 404, message: 'NOT_FOUND' }, 'Quiz error.');
+    }, async (baseUrl) => {
+      const r402 = await fetch(`${baseUrl}/402`);
+      assert.equal(r402.status, 402);
+      const j402 = (await r402.json()) as { code: string; error: string };
+      assert.equal(j402.code, 'RESOURCE_EXHAUSTED');
+
+      const r429 = await fetch(`${baseUrl}/429`);
+      assert.equal(r429.status, 429);
+      const j429 = (await r429.json()) as { code: string };
+      assert.equal(j429.code, 'RESOURCE_EXHAUSTED');
+
+      const r403 = await fetch(`${baseUrl}/403`);
+      assert.equal(r403.status, 403);
+      const j403 = (await r403.json()) as { code: string };
+      assert.equal(j403.code, 'API_KEY_ERROR');
+
+      const r502 = await fetch(`${baseUrl}/404`);
+      assert.equal(r502.status, 502);
+      const j502 = (await r502.json()) as { code: string };
+      assert.equal(j502.code, 'MODEL_NOT_FOUND');
+    });
   });
 });

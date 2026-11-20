@@ -110,14 +110,22 @@ export function normalizePathname(rawUrl: string | undefined): string {
   return pathname;
 }
 
-function handleGeminiError(res: ServerResponse, error: unknown, fallbackMessage: string): void {
-  console.error('Gemini API error:', error);
+export function handleGeminiError(
+  res: ServerResponse,
+  error: unknown,
+  fallbackMessage: string
+): void {
   if (error instanceof HttpPayloadError) {
     sendJson(res, error.statusCode, { error: error.message });
     return;
   }
 
-  const rawMessage = error instanceof Error ? error.message : String(error ?? '');
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown })?.message === 'string'
+      ? (error as { message: string }).message
+      : String(error ?? '');
   if (rawMessage.includes('GEMINI_API_KEY is not configured')) {
     sendJson(res, 503, {
       error: 'Server AI configuration is missing GEMINI_API_KEY.',
@@ -165,6 +173,8 @@ function handleGeminiError(res: ServerResponse, error: unknown, fallbackMessage:
     return;
   }
 
+  const conciseMessage = rawMessage.replace(/\s+/g, ' ').slice(0, 160);
+  console.warn(`API fallback (${fallbackMessage}): ${conciseMessage || 'Unknown error'}`);
   sendJson(res, 500, {
     error: fallbackMessage,
   });
